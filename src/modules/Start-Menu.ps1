@@ -1,60 +1,35 @@
+# ===============================
+# Hyper-V Management Tool Menu
+# ===============================
+
 function Show-Menu {
-    <#
-    .SYNOPSIS
-    Displays a menu with options and highlights the current selection.
-    .DESCRIPTION
-    This function takes an array of options and the index of the currently selected option.
-    It displays the options in the console, highlighting the selected option.
-    #>
-    [CmdletBinding()]
     param (
-        [parameter(Mandatory)]
         [string[]] $options,
-
-        [parameter(Mandatory)]
         [int] $currentOption,
-
-        [int] $Top = [Console]::CursorTop  # where to draw
+        [int] $menuTop
     )
 
-    # Save the current cursor position
-    $cursorLeft = [Console]::CursorLeft
-    $cursorTop = [Console]::CursorTop
+    $windowWidth = [Console]::WindowWidth
 
-    # Move cursor back to the menu’s top
-    [Console]::SetCursorPosition(0, $Top)
+    for ($i = 0; $i -lt $options.Count; $i++) {
+        $linePosition = $menuTop + $i
+        [Console]::SetCursorPosition(0, $linePosition)
+        [Console]::Write(" " * ($windowWidth - 1))
+        [Console]::SetCursorPosition(0, $linePosition)
 
-    for ($i = 0; $i -lt $options.Length; $i++) {
         if ($i -eq $currentOption) {
-            Write-Host ("> " + $options[$i]).PadRight([Console]::WindowWidth) -ForegroundColor Green
+            Write-Host "> $($options[$i])" -ForegroundColor Yellow
         }
         else {
-            Write-Host ("  " + $options[$i]).PadRight([Console]::WindowWidth)
+            Write-Host "  $($options[$i])" -ForegroundColor Gray
         }
     }
-
-    # Clear any remaining lines from previous longer menu
-    [Console]::SetCursorPosition($cursorLeft, $cursorTop)
 }
 
 function Start-Menu {
-    <#
-    .SYNOPSIS
-    Starts the interactive menu and handles user input.
-    .DESCRIPTION
-    This function initializes the menu, captures user input for navigation,
-    and returns the selected option when the user presses Enter.
-    #>
-
-    [CmdletBinding()]
-    [OutputType([PSCustomObject])]
     param (
-        [parameter(Mandatory)]
         [string[]] $options,
-
-        [string] $title = "Select an option:",
-
-
+        [string] $title = "Please select an option:",
         [int] $DefaultIndex = 0
     )
 
@@ -62,52 +37,110 @@ function Start-Menu {
         throw "Start-Menu: You must provide at least one option."
     }
 
-    Write-Host "`n===============================" -ForegroundColor Yellow
-    Write-Host "Use Up/Down arrows or number keys to navigate, Enter to select." -ForegroundColor Yellow
-    Write-Host $title -ForegroundColor Yellow
+    # listen to key presses
+    $currentOption = $DefaultIndex
+    $menuTop = [Console]::CursorTop + 2
+    $exitMenu = $false
+    $selectedOption = $null
+    $windowWidth = [Console]::WindowWidth
+    $windowHeight = [Console]::WindowHeight
+    $menuHeight = $options.Count + 2
+    $menuBottom = $menuTop + $menuHeight - 1
+    $titleLines = $title -split "`n"
+    $titleHeight = $titleLines.Count + 1
+    $totalMenuHeight = $titleHeight + $menuHeight
+    $titleTop = $menuTop - $titleHeight
+    $titleBottom = $menuTop - 1
+    $initialCursorTop = [Console]::CursorTop
+    $initialCursorLeft = [Console]::CursorLeft
+    $initialBufferHeight = [Console]::BufferHeight
+    $initialBufferWidth = [Console]::BufferWidth
+    $initialWindowHeight = [Console]::WindowHeight
+    $initialWindowWidth = [Console]::WindowWidth
+    $needToRedraw = $true
+    $keyInfo = $null
+    $originalTitle = [Console]::Title
+    [Console]::Title = $title
 
-    $currentOption = [Math]::Min($DefaultIndex, $options.Length - 1)
-    $menuTop = [Console]::CursorTop  # remember where to draw menu
+    # Adjust buffer size if necessary
+    if ($initialBufferHeight -lt $initialWindowHeight + $totalMenuHeight) {
+        [Console]::BufferHeight = $initialWindowHeight + $totalMenuHeight
+    }
+    if ($initialBufferWidth -lt $initialWindowWidth) {
+        [Console]::BufferWidth = $initialWindowWidth
+    }
+    # Adjust window size if necessary
+    if ($initialWindowHeight -lt $totalMenuHeight + 2) {
+        [Console]::WindowHeight = [Math]::Min($initialBufferHeight, $totalMenuHeight + 2)
+    }
+    if ($initialWindowWidth -lt 50) {
+        [Console]::WindowWidth = [Math]::Min($initialBufferWidth, 50)
+    }
+    # Main loop
+    while (-not $exitMenu) {
+        if ($needToRedraw) {
+            # Draw title
+            for ($i = 0; $i -lt $titleLines.Count; $i++) {
+                $linePosition = $titleTop + $i
+                [Console]::SetCursorPosition(0, $linePosition)
+                [Console]::Write(" " * ($windowWidth - 1))
+                [Console]::SetCursorPosition(0, $linePosition)
+                Write-Host $titleLines[$i] -ForegroundColor Cyan
+            }
+            [Console]::SetCursorPosition(0, $titleBottom)
+            [Console]::Write(" " * ($windowWidth - 1))
+            [Console]::SetCursorPosition(0, $titleBottom)
+            Write-Host ("=" * ($windowWidth - 1)) -ForegroundColor Cyan
 
+            # Draw menu
+            Show-Menu -options $options -currentOption $currentOption -menuTop $menuTop
+            $needToRedraw = $false
+        }
 
-    Show-Menu -options $options -CurrentOption $currentOption -Top $menuTop
+        # Read key input
+        $keyInfo = [Console]::ReadKey($true)
 
-    while ($true) {
-        $key = [Console]::ReadKey($true).Key
-        switch ($key) {
+        switch ($keyInfo.Key) {
             'UpArrow' {
                 if ($currentOption -gt 0) {
                     $currentOption--
-                }
-                else {
-                    $currentOption = $options.Length - 1
+                    Show-Menu -options $options -currentOption $currentOption -menuTop $menuTop
                 }
             }
             'DownArrow' {
-                if ($currentOption -lt $options.Length - 1) {
+                if ($currentOption -lt $options.Count - 1) {
                     $currentOption++
-                }
-                else {
-                    $currentOption = 0
-                }
-            }
-            { $_ -match '^D[0-9]$' } {
-                $num = [int]($_.ToString().Substring(1))
-                if ($num -gt 0 -and $num -le $options.Length) {
-                    $currentOption = $num - 1
-                }
-            }
-            { $_ -match '^NumPad[0-9]$' } {
-                $num = [int]($_.ToString().Substring(6))
-                if ($num -gt 0 -and $num -le $options.Length) {
-                    $currentOption = $num - 1
+                    Show-Menu -options $options -currentOption $currentOption -menuTop $menuTop
                 }
             }
             'Enter' {
-                [Console]::SetCursorPosition(0, $menuTop + $options.Length)
-                return $options[$currentOption]
+                $selectedOption = $options[$currentOption]
+                $exitMenu = $true
+            }
+            'D1'.'D9' {
+                $index = [int]$keyInfo.KeyChar - 1
+                if ($index -ge 0 -and $index -lt $options.Count) {
+                    $currentOption = $index
+                    Show-Menu -options $options -currentOption $currentOption -menuTop $menuTop
+                    $selectedOption = $options[$currentOption]
+                    $exitMenu = $true
+                }
+            }
+            'Escape' {
+                $selectedOption = $null
+                $exitMenu = $true
             }
         }
-        Show-Menu -options $options -CurrentOption $currentOption -Top $menuTop
     }
+    # Cleanup
+    [Console]::SetCursorPosition(0, $menuBottom + 1)
+    [Console]::Write(" " * ($windowWidth - 1))
+    [Console]::SetCursorPosition(0, $menuBottom + 1)
+    [Console]::Title = $originalTitle
+    [Console]::SetCursorPosition($initialCursorLeft, $initialCursorTop)
+    [Console]::BufferHeight = $initialBufferHeight
+    [Console]::BufferWidth = $initialBufferWidth
+    [Console]::WindowHeight = $initialWindowHeight
+    [Console]::WindowWidth = $initialWindowWidth
+    return $selectedOption
 }

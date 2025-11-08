@@ -12,7 +12,7 @@
 #>
 
 # Import the Start-Menu module
-Import-Module "$PSScriptRoot/modules/Start-Menu.ps1"
+. "$PSScriptRoot/modules/Start-Menu.ps1"
 
 
 $toolName = "Hyper-V Management Tool"
