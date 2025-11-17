@@ -34,8 +34,6 @@ powercfg -change -monitor-timeout-ac 0
 powercfg -change -standby-timeout-ac 0
 powercfg -change -hibernate-timeout-ac 0
 
-Enable-NetFirewallRule -Name "FPS-SMB-In-TCP"
-
 
 # --- Event Log Size Settings ---
 Set-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Services\EventLog\Security" -Name "MaxSize" -Value 268435456
@@ -58,13 +56,8 @@ Set-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Control\Terminal Server\W
 Set-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp" -Name "MaxDisconnectionTime" -Value 259200000
 Set-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp" -Name "MaxIdleTime" -Value 259200000
 
-# --- SNMP Service Installation ---
-Install-WindowsFeature SNMP-Service -IncludeAllSubFeature -IncludeManagementToolsa
 
 
-# --- Kerberos MaxTokenSize ---
-New-Item -Path "HKLM:\SYSTEM\CurrentControlSet\Control\Lsa\Kerberos\Parameters" -Force
-Set-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Control\Lsa\Kerberos\Parameters" -Name "MaxTokenSize" -Value 65535
 
 # --- Registry Hardening ---
 New-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Ole\AppCompat" -Name "RequireIntegrityActivationAuthenticationLevel" -PropertyType DWord -Value 0 -Force

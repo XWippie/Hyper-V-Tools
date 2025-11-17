@@ -1,0 +1,126 @@
+<?xml version="1.0" encoding="utf-8"?>
+<unattend xmlns="urn:schemas-microsoft-com:unattend">
+
+    <!-- ========================= -->
+    <!-- 1. windowsPE Pass         -->
+    <!-- ========================= -->
+    <settings pass="windowsPE">
+        <component name="Microsoft-Windows-Setup" processorArchitecture="amd64"
+            publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS"
+            xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State"
+            xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+
+            <!-- Edition/Product Key (optional) -->
+            <UserData>
+                <ProductKey>
+                    <Key>00000-00000-00000-00000-00000</Key>
+                </ProductKey>
+                <AcceptEula>true</AcceptEula>
+            </UserData>
+
+            <ImageInstall>
+                <OSImage>
+                    <InstallTo>
+                        <DiskID>0</DiskID>
+                        <PartitionID>2</PartitionID>
+                    </InstallTo>
+                    <WillShowUI>OnError</WillShowUI>
+                </OSImage>
+            </ImageInstall>
+
+            <ComputerName>{{COMPUTER_NAME}}</ComputerName>
+
+        </component>
+    </settings>
+
+    <!-- ========================= -->
+    <!-- 2. specialize Pass        -->
+    <!-- ========================= -->
+    <settings pass="specialize">
+        <component name="Microsoft-Windows-Shell-Setup" processorArchitecture="amd64"
+            publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS"
+            xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State"
+            xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+
+            <ComputerName>{{COMPUTER_NAME}}</ComputerName>
+            <TimeZone>{{TIMEZONE}}</TimeZone>
+
+        </component>
+
+        <!-- Optional: Domain join -->
+        <component name="Microsoft-Windows-UnattendedJoin" processorArchitecture="amd64"
+            publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS"
+            xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State"
+            xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+            <Identification>
+                <Credentials>
+                    <Domain>{{DOMAIN_NAME}}</Domain>
+                    <Password>{{DOMAIN_PASSWORD}}</Password>
+                    <Username>{{DOMAIN_USER}}</Username>
+                </Credentials>
+                <JoinDomain>{{DOMAIN_NAME}}</JoinDomain>
+            </Identification>
+        </component>
+
+    </settings>
+
+    <!-- ========================= -->
+    <!-- 3. oobeSystem Pass        -->
+    <!-- ========================= -->
+    <settings pass="oobeSystem">
+        <component name="Microsoft-Windows-Shell-Setup" processorArchitecture="amd64"
+            publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS"
+            xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State"
+            xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+
+            <!-- Skip first-boot OOBE -->
+            <OOBE>
+                <HideEULAPage>true</HideEULAPage>
+                <HideLocalAccountScreen>true</HideLocalAccountScreen>
+                <HideOEMRegistrationScreen>true</HideOEMRegistrationScreen>
+                <HideOnlineAccountScreens>true</HideOnlineAccountScreens>
+                <ProtectYourPC>3</ProtectYourPC>
+            </OOBE>
+
+            <!-- Create Local Admin -->
+            <UserAccounts>
+                <LocalAccounts>
+                    <LocalAccount wcm:action="add">
+                        <Name>{{LOCAL_ADMIN}}</Name>
+                        <Group>Administrators</Group>
+                        <Password>
+                            <Value>{{LOCAL_ADMIN_PASSWORD}}</Value>
+                            <PlainText>true</PlainText>
+                        </Password>
+                    </LocalAccount>
+                </LocalAccounts>
+            </UserAccounts>
+
+            <!-- Auto Logon (optional) -->
+            <!-- Remove if not needed -->
+            <AutoLogon>
+                <Password>
+                    <Value>{{LOCAL_ADMIN_PASSWORD}}</Value>
+                    <PlainText>true</PlainText>
+                </Password>
+                <Enabled>true</Enabled>
+                <Username>{{LOCAL_ADMIN}}</Username>
+                <LogonCount>1</LogonCount>
+            </AutoLogon>
+
+            <!-- First Logon Commands -->
+            <FirstLogonCommands>
+                <SynchronousCommand wcm:action="add">
+                    <Order>1</Order>
+                    <CommandLine>{{FIRST_BOOT_SCRIPT}}</CommandLine>
+                    <Description>Run first boot script</Description>
+                </SynchronousCommand>
+            </FirstLogonCommands>
+
+        </component>
+    </settings>
+
+    <cpi:offlineImage cpi:source="wim://{{WIM_PATH}}#{{IMAGE_NAME}}"
+        xmlns:cpi="urn:schemas-microsoft-com:cpi" />
+
+</unattend>

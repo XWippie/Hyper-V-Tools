@@ -5,18 +5,13 @@
     This script exports a specified template VM, imports it as a new VM with a unique ID,
     and allows the user to configure various settings for the cloned VM, including memory,
     CPU, disk size, and Out-Of-Box Experience (OOBE) settings.
-.PARAMETER TemplateVM
-    The name of the template VM to clone.
-.PARAMETER ImportPath
-    The path where the cloned VM will be imported.
-.PARAMETER CloneName
-    The name for the cloned VM.
 .NOTES
     Author: XWippie
     Date: 11 Nov 2025
-    Version: 1.0
+    Version: 1.1
 
-    IS NOT TESTED YET
+    Half tested on Windows Server 2025 with Hyper-V role installed.
+    Use at your own risk.
 #>
 
 #
@@ -26,10 +21,10 @@ $config = @{
     'TemplateVM'        = 'TemplateVM'
     'TemplateVMPath'    = 'D:\\VMs\\Exports'
     'ImportPathOptions' = @(
-        'C:\\ClusterStorage\\SharedStorage',
+        'C:\\ClusterStorage\\SharedStorage\\VMs',
         'D:\\VMs'
-    ),
-    'DefaultPassword'   = 'P@ssw0rd'
+    );
+    'DefaultPassword'   = 'P@ssw0rd';
 }
 
 $LogFile = "$($PSScriptRoot)\logs\" + ((Get-Date).ToString('ddMMyyHHmmss')) + '_CloneVM.log'
@@ -87,7 +82,7 @@ function Get-Input {
         [string]$prompt,
 
         [Parameter(Mandatory)]
-        [int]$defaultValue,
+        $defaultValue,
 
         [Parameter(Mandatory)]
         [ValidateSet("int", "integer", "str", "string")]
@@ -99,6 +94,14 @@ function Get-Input {
 
     Write-Log "Prompting user for input: $prompt with default value: $defaultValue and input type: $inputType" 'DEBUG'
 
+    #if options are provided, loop and go over them 1. www 2. xxx
+    if ($options) {
+        Write-Host "Please select from the following options:"
+        for ($i = 0; $i -lt $options.Count; $i++) {
+            Write-Host "> $($i + 1) - $($options[$i])"
+        }
+    }
+
     # Display the prompt and get user input
     while ($true) {
         Write-Log "Displaying prompt to user: $prompt" 'DEBUG'
@@ -108,7 +111,11 @@ function Get-Input {
         # Use default value if input is empty
         if ([string]::IsNullOrWhiteSpace($userInput)) {
             Write-Log "No input provided, using default value: $defaultValue" 'INFO'
-            return $defaultValue
+            if ($inputType -in @('int', 'integer')) {
+                return $options[$defaultValue - 1]
+            } else {
+                return $defaultValue
+            }
         }
 
         # Validate against options if provided
@@ -142,50 +149,17 @@ function Get-Input {
 #endregion
 
 #
-# Function Show-Loader
-#region
-function Show-Loader {
-    param (
-        $enable = $true
-    )
-
-    $loader = @(
-        '|',
-        '/',
-        '-',
-        '\'
-    )
-    if ($enable) {
-        $script:loaderJob = Start-Job -ScriptBlock {
-            while ($true) {
-                foreach ($frame in $using:loader) {
-                    Write-Host -NoNewline "`rCloning VM... $frame"
-                    Start-Sleep -Milliseconds 200
-                }
-            }
-        }
-    }
-    else {
-        if ($script:loaderJob) {
-            Stop-Job -Job $script:loaderJob | Out-Null
-            Remove-Job -Job $script:loaderJob | Out-Null
-        }
-    }
-}
-#endregion
-
-#
 # Function Wait-VMReady
 #region
 function Wait-VMReady {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory)] [string] $VMName,
-        [ValidateSet('Running','Heartbeat','IP','PsDirect')] [string[]] $Stages = @('Running','Heartbeat'),
-        [int] $TimeoutRunningSec  = 300,
-        [int] $TimeoutHeartbeatSec = 600,
-        [int] $TimeoutIPSec       = 900,
-        [int] $TimeoutPsDirectSec = 1200,
+        [ValidateSet('Running', 'Heartbeat', 'IP', 'PsDirect')] [string[]] $Stages = @('Running', 'Heartbeat'),
+        [int] $TimeoutRunningSec = 300,
+        [int] $TimeoutHeartbeatSec = 300,
+        [int] $TimeoutIPSec = 300,
+        [int] $TimeoutPsDirectSec = 300,
         [System.Management.Automation.PSCredential] $Credential
     )
 
@@ -197,7 +171,7 @@ function Wait-VMReady {
             if ($state -eq 'Running') { break }
             Start-Sleep 2
         } while ($sw.Elapsed.TotalSeconds -lt $TimeoutRunningSec)
-        if ($state -ne 'Running') { throw "[$VMName] did not enter 'Running' within $TimeoutRunningSec sec (state: $state)" }
+        if ($state -ne 'Running') { throw "[$VMName] not Running within $TimeoutRunningSec sec" }
         Write-Verbose "[$VMName] Running"
     }
 
@@ -241,7 +215,8 @@ function Wait-VMReady {
                 $s = New-PSSession -VMName $VMName -Credential $Credential -ErrorAction Stop
                 Remove-PSSession $s
                 $psd = $true
-            } catch {
+            }
+            catch {
                 Start-Sleep 5
             }
         } while (-not $psd -and $sw.Elapsed.TotalSeconds -lt $TimeoutPsDirectSec)
@@ -254,7 +229,7 @@ function Wait-VMReady {
         IPv4      = $ipv4
         Running   = $true
         Heartbeat = if ($Stages -contains 'Heartbeat') { $ok } else { $null }
-        PsDirect  = if ($Stages -contains 'PsDirect')  { $psd } else { $null }
+        PsDirect  = if ($Stages -contains 'PsDirect') { $psd } else { $null }
     }
 }
 #endregion
@@ -304,14 +279,14 @@ Write-Host "Template VM set to: $TemplateVM"
 Write-Log "Template VM set to: $TemplateVM" 'INFO'
 
 
-if ( (Test-Path -Path "$($ExportPath)\$($TemplateVM)") ) {
+if ( (Test-Path -Path "$($config.TemplateVMPath)\$($TemplateVM)") ) {
     Write-Host 'An export for the template VM already exists. Skipping export step.'
 }
 else {
     try {
         Write-Host "Exporting VM $($TemplateVM)"
-        Write-Log "Exporting VM $($TemplateVM) to path $ExportPath" 'INFO'
-        Export-VM -Name $TemplateVM -Path $ExportPath -WhatIf
+        Write-Log "Exporting VM $($TemplateVM) to path $($config.TemplateVMPath)" 'INFO'
+        Export-VM -Name $TemplateVM -Path $config.TemplateVMPath 
         Write-Host 'Export completed.'
         Write-Log "Export of VM $($TemplateVM) completed successfully." 'INFO'
     }
@@ -329,24 +304,55 @@ else {
 #region
 #TODO $TargetHost = Get-Input -prompt 'Enter the target Hyper-V host name' -defaultValue $env:COMPUTERNAME -inputType 'string'
 $CloneName = Get-Input -prompt 'Enter the name for the cloned VM' -defaultValue "$($TemplateVM)_Clone" -inputType 'string'
-$ImportPath = Get-Input -prompt 'Select the import path for the cloned VM' -defaultValue '1' -inputType 'string' -options $config.ImportPathOptions
+if (Get-VM -Name $CloneName -ErrorAction SilentlyContinue) {
+    Write-Host "A VM with the name $($CloneName) already exists. Please choose a different name. Exiting script." -ForegroundColor Red
+    Write-Log "A VM with the name $($CloneName) already exists. Exiting script." 'ERROR'
+    exit
+}
+
+$ImportPath = Get-Input -prompt 'Select the import path for the cloned VM' -defaultValue 1 -inputType 'int' -options $config.ImportPathOptions
+
+#create a directory for the new vm using import path + vm name
+$ImportPath = Join-Path -Path $ImportPath -ChildPath "\\$($CloneName)"
+
+Write-Host "Import directory set to: $($ImportPath)"
+Write-Log "Import directory set to: $($ImportPath)" 'INFO'
+
+if (-Not (Test-Path -Path $ImportPath -ErrorAction SilentlyContinue)) {
+    try {
+        New-Item -ItemType Directory -Path $ImportPath
+        Write-Host "Created import directory at $($ImportPath)"
+        Write-Log "Created import directory at $($ImportPath)" 'INFO'
+    }
+    catch {
+        Write-Host 'Failed to create the import directory. Check the logs for more details.' -ForegroundColor Red
+        Write-Log "Failed to create the import directory at $($ImportPath). Exiting script." 'ERROR'
+        Write-Log "Details: $($_.Exception.Message)" 'ERROR'
+        exit
+    }    
+}
+else {
+    Write-Host "Import directory already exists at $($ImportPath), continuing..."
+    Write-Log "Import directory already exists at $($ImportPath), continuing..." 'INFO'
+}
+
 #endregion
 
 #
 # Pre requisites
 #region
-# check in a VMCX file iwith extension exists in the import path (i don't know the name of the file so i check for the extension) if exists get the path of the file
 Write-Host 'Checking for VMCX file in the exported VM directory...'
 Write-Log 'Checking for VMCX file in the exported VM directory...' 'INFO'
 try {
-    $vmcxPath = Get-ChildItem -Path "$($ExportPath)/$($TemplateVM)" -Filter *.vmcx -Recurse | Select-Object -First 1 | Select-Object -ExpandProperty FullName
+    $vmcxPath = Get-ChildItem -Path "$($config.TemplateVMPath)/$($TemplateVM)" -Filter *.vmcx -Recurse | Select-Object -First 1 | Select-Object -ExpandProperty FullName
     if (-Not $vmcxPath) {
         Write-Host 'No VMCX file found in the export directory. Cannot proceed with import., Check the logs for more details.' -ForegroundColor Red
-        Write-Log "No VMCX file found in the export directory. ( $($ExportPath)/$($TemplateVM)). Exiting script." 'ERROR'
+        Write-Log "No VMCX file found in the export directory. ($($config.TemplateVMPath)/$($TemplateVM)). Exiting script." 'ERROR'
         Write-Log "Ensure that the VM was exported correctly and the VMCX file is present." 'ERROR'
         exit
     }
     Write-Host "Found VMCX file at $vmcxPath"
+    Write-Log "Found VMCX file at $vmcxPath" 'INFO'
     Write-Log "Found VMCX file at $vmcxPath" 'INFO'
 }
 catch {
@@ -380,7 +386,6 @@ else {
 }
 
 
-# Create subdirectories for the import process
 Write-Host 'Ensuring necessary subdirectories exist in the import path...'
 Write-Log 'Ensuring necessary subdirectories exist in the import path...' 'INFO'
 $subDirs = @('Virtual Machines', 'Snapshots', 'Virtual Hard Disks')
@@ -412,26 +417,22 @@ foreach ($dir in $subDirs) {
 Write-Host "Importing VM from $($vmcxPath) to $($ImportPath) with new name $($CloneName)..."
 Write-Log "Importing VM from $($vmcxPath) to $($ImportPath) with new name $($CloneName)..." 'INFO'
 try {
-    # Import as a new VM with a unique ID
     Start-Transaction
-    Show-Loader
-    Import-VM -Path $vmcxPath -Copy -GenerateNewId -VirtualMachinePath '$ImportPath' -SnapshotFilePath '$ImportPath/Snapshots' -VhdDestinationPath '$ImportPath/Virtual Hard Disks' | Rename-VM -NewName $CloneName
-    Show-Loader -enable $false
+    Import-VM -Path $vmcxPath -Copy -GenerateNewId -VirtualMachinePath $ImportPath -SnapshotFilePath "$($ImportPath)/Snapshots" -VhdDestinationPath "$($ImportPath)/Virtual Hard Disks" | Rename-VM -NewName $CloneName
     Write-Host "Import completed. VM $($CloneName) has been created."
     Write-Log "Import of VM $($TemplateVM) completed successfully as $($CloneName)." 'INFO'
-    Commit-Transaction
+    Complete-Transaction
 }
 catch {
     Write-Host "An error occurred during import, Check the logs for more details." -ForegroundColor Red
     Write-Log "An error occurred during import of VM $($TemplateVM). Exiting script." 'ERROR'
     Write-Log "Details: $($_.Exception.Message)" 'ERROR'
-    Rollback-Transaction
+    Undo-Transaction
     exit
 }
 
 Write-Host 'Verifying the new VM exists...'
 Write-Log 'Verifying the new VM exists...' 'INFO'
-# Verify the new VM
 if (Get-VM -Name $CloneName -ErrorAction SilentlyContinue) {
     Write-Host "VM $($CloneName) has been successfully created and is available."
     Write-Log "VM $($CloneName) has been successfully created and is available." 'INFO'
@@ -442,7 +443,6 @@ else {
     exit
 }
 
-# Rename the disk files to match the new VM name
 Write-Host 'Renaming disk files to match the new VM name...'
 Write-Log 'Renaming disk files to match the new VM name...' 'INFO'
 $diskFiles = Get-ChildItem -Path "$($ImportPath)/Virtual Hard Disks"
@@ -460,11 +460,12 @@ foreach ($disk in $diskFiles) {
     }
 }
 
-# Set the vm to use the new disk files
+
+
 try {
     Write-Host 'Setting the new VM to use the renamed disk files...'
     Write-Log 'Setting the new VM to use the renamed disk files...' 'INFO'
-    Set-VMHardDiskDrive -VMName $CloneName -ControllerType SCSI -ControllerNumber 0 -ControllerLocation 0 -Path '$ImportPath/Virtual Hard Disks/$($diskFiles[0].Name -replace [regex]::Escape($TemplateVM), $CloneName)' 
+    Set-VMHardDiskDrive -VMName $CloneName -ControllerType SCSI -ControllerNumber 0 -ControllerLocation 0 -Path "$($ImportPath)/Virtual Hard Disks/$($diskFiles[0].Name -replace [regex]::Escape($TemplateVM), $CloneName)" 
     Write-Host 'Set the VM to use the new disk file successfully.' -ForegroundColor Green
     Write-Log "Set the VM '$CloneName' to use the new disk file." 'INFO'
 }
@@ -473,6 +474,73 @@ catch {
     Write-Log "An error occurred while setting the VM to use the new disk file for VM '$CloneName'. Exiting script." 'ERROR'
     Write-Log "Details: $($_.Exception.Message)" 'ERROR'
 }
+
+$clusterNodes = @()
+if (if $ImportPath -like '*ClusterStorage*') {
+    try {
+        $cluster = Get-Cluster -ErrorAction Stop
+        $clusterNodes = $cluster | Get-ClusterNode | Select-Object -ExpandProperty Name
+        Write-Host "Cluster nodes retrieved successfully."
+        Write-Log "Retrieved cluster nodes: $($clusterNodes -join ', ')" 'INFO'
+    }
+    catch {
+        Write-Host 'An error occurred while retrieving cluster nodes, Check the logs for more details.' -ForegroundColor Red
+        Write-Log 'An error occurred while retrieving cluster nodes. Exiting script.' 'ERROR'
+        Write-Log "Details: $($_.Exception.Message)" 'ERROR'
+    }
+
+    if ($clusterNodes.Count -gt 0) {
+        Write-Host 'Select the preferred host for the new VM:'
+        $options = @()
+        for ($i = 0; $i -lt $clusterNodes.Count; $i++) {
+            $options += $clusterNodes[$i]
+        }
+        $hostSelection = Get-Input -prompt 'Enter the number corresponding to your choice' -defaultValue 1 -inputType 'int' -options $options
+        if ($hostSelection -lt 1 -or $hostSelection -gt $clusterNodes.Count) {
+            Write-Host 'Invalid selection. Skipping preferred host configuration.' -ForegroundColor Yellow
+            Write-Log 'Invalid selection for preferred host. Skipping preferred host configuration.' 'WARNING'
+        }
+        else {
+            $preferredHost = $clusterNodes[$hostSelection - 1]
+            try {
+                Set-VM -Name $CloneName -PreferredOwner $preferredHost
+                Write-Host "Set preferred host of VM $($CloneName) to $($preferredHost)."
+                Write-Log "Set preferred host of VM $($CloneName) to $($preferredHost)." 'INFO'
+            }
+            catch {
+                Write-Host "An error occurred while setting the preferred host, Check the logs for more details." -ForegroundColor Red
+                Write-Log "An error occurred while setting the preferred host for VM $($CloneName). Exiting script." 'ERROR'
+                Write-Log "Details: $($_.Exception.Message)" 'ERROR'
+            }
+            try {
+                Write-Host "Moved VM $($CloneName) to preferred host $($preferredHost)."
+                Write-Log "Moved VM $($CloneName) to preferred host $($preferredHost)." 'INFO'
+            }
+            catch {
+                Write-Host "An error occurred while moving the VM to the preferred host, Check the logs for more details." -ForegroundColor Red
+                Write-Log "An error occurred while moving VM $($CloneName) to preferred host $($preferredHost). Exiting script." 'ERROR'
+                Write-Log "Details: $($_.Exception.Message)" 'ERROR'
+            }
+        }
+    }
+    else {
+        Write-Host 'No cluster nodes found. Skipping preferred host configuration.' -ForegroundColor Yellow
+        Write-Log 'No cluster nodes found. Skipping preferred host configuration.' 'WARNING'
+    }
+}
+
+# move the vm to its preferred host if set
+try {
+    Move-VM -Name $CloneName -ErrorAction Stop
+    Write-Host "Moved VM $($CloneName) to its preferred host successfully."
+    Write-Log "Moved VM $($CloneName) to its preferred host successfully." 'INFO'
+}
+catch {
+    Write-Host "An error occurred while moving the VM to its preferred host, Check the logs for more details." -ForegroundColor Red
+    Write-Log "An error occurred while moving VM $($CloneName) to its preferred host. Exiting script." 'ERROR'
+    Write-Log "Details: $($_.Exception.Message)" 'ERROR'
+}
+
 #endregion
 
 #
@@ -481,8 +549,7 @@ catch {
 Write-Host 'Configuring the new VM settings...'
 Write-Log 'Configuring the new VM settings...' 'INFO'
 
-# Set the startup delay for the new VM
-$startDelay = Get-Input -prompt "Enter the startup delay (in seconds) for the new VM $($CloneName)" -defaultValue 0 -inputType 'int'
+$startDelay = Get-Input -prompt "Enter the startup delay (in seconds) for the new VM $($CloneName)" -defaultValue 0 -inputType 'string'
 try {
     Set-VM -Name $CloneName -AutomaticStartDelay $startDelay
     Write-Host "Startup delay set at $($startDelay) seconds" -ForegroundColor Green
@@ -494,7 +561,7 @@ catch {
     Write-Log "Details: $($_.Exception.Message)" 'ERROR'
 }
 
-$stopaction = Get-Input -prompt "Enter the automatic stop action for the new VM $($CloneName) (0: Save, 1: Turn Off, 2: Shut Down)" -defaultValue 2 -inputType 'int'
+$stopaction = Get-Input -prompt "Enter the automatic stop action for the new VM $($CloneName) (1: Save, 2: Turn Off, 3: Shut Down)" -defaultValue 3 -inputType 'int' -options @('Save', 'TurnOff', 'ShutDown')
 try {
     Set-VM -Name $CloneName -AutomaticStopAction $stopaction
     Write-Host "Stop action set to $($stopaction)" -ForegroundColor Green
@@ -506,9 +573,10 @@ catch {
     Write-Log "Details: $($_.Exception.Message)" 'ERROR'
 }
 
-$ramValue = Get-Input -prompt "Enter the amount of memory (in GB) to allocate to the new VM $($CloneName)" -defaultValue 4 -inputType 'int'
+$ramValue = Get-Input -prompt "Enter the amount of memory (in GB) to allocate to the new VM $($CloneName)" -defaultValue 4 -inputType 'string'
 try {
-    Set-VMMemory -VMName $CloneName -StartupBytes ($ramValue * 1GB)
+    $ramValueMB = $ramValue * 1024
+    Set-VMMemory -VMName $CloneName -StartupBytes "$($ramValueMB)MB"
     Write-Host "Set the memory of VM $($CloneName) to $($ramValue) GB."
     Write-Log "Set the memory of VM $($CloneName) to $($ramValue) GB." 'INFO'
 }
@@ -517,7 +585,7 @@ catch {
     Write-Log "An error occurred while setting the memory for VM $($CloneName). Exiting script." 'ERROR'
 }
 
-$cpuAmount = Get-Input -prompt "Enter the number of virtual processors to allocate to the new VM $($CloneName)" -defaultValue 1 -inputType 'int'
+$cpuAmount = Get-Input -prompt "Enter the number of virtual processors to allocate to the new VM $($CloneName)" -defaultValue 1 -inputType 'string'
 try {
     Set-VMProcessor -VMName $CloneName -Count $cpuAmount
     Write-Host "Set the CPU count of VM $($CloneName) to $($cpuAmount)."
@@ -528,7 +596,7 @@ catch {
     Write-Log "An error occurred while setting the CPU count for VM $($CloneName). Exiting script." 'ERROR'
 }
 
-$diskSizeGB = Get-Input -prompt "Enter the new disk size (in GB) for the VM $($CloneName)" -defaultValue 50 -inputType 'int'
+$diskSizeGB = Get-Input -prompt "Enter the new disk size (in GB) for the VM $($CloneName)" -defaultValue 50 -inputType 'string'
 if ($diskSizeGB -gt 50) {
     try {
         Resize-VHD -Path "$ImportPath/Virtual Hard Disks/$($diskFiles[0].Name -replace [regex]::Escape($TemplateVM), $CloneName)" -SizeBytes ($diskSizeGB * 1GB)
@@ -566,53 +634,118 @@ if (-Not (Test-Path -Path 'Config')) {
         Write-Log "Details: $($_.Exception.Message)" 'ERROR'
         exit
     }
-} else {
+}
+else {
     Write-Host 'Config directory already exists, continuing...'
     Write-Log 'Config directory already exists, continuing...' 'INFO'
 }
 
-$unattendXml = @"
-<?xml version="1.0" encoding="utf-8"?>
+$unattendXml = @'<?xml version="1.0" encoding="utf-8"?>
 <unattend xmlns="urn:schemas-microsoft-com:unattend">
-  <settings pass="specialize">
-    <component name="Microsoft-Windows-Shell-Setup" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" language="" versionScope="nonSxS">
-      <ComputerName>$CloneName</ComputerName>
+
+  <!-- ========================= -->
+  <!-- 1. windowsPE Pass         -->
+  <!-- ========================= -->
+  <settings pass="windowsPE">
+    <component name="Microsoft-Windows-Setup" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS" xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+
+      <!-- Edition/Product Key (optional) -->
+      <UserData>
+        <ProductKey>
+          <Key>00000-00000-00000-00000-00000</Key>
+        </ProductKey>
+        <AcceptEula>true</AcceptEula>
+      </UserData>
+
+      <ImageInstall>
+        <OSImage>
+          <InstallTo>
+            <DiskID>0</DiskID>
+            <PartitionID>2</PartitionID>
+          </InstallTo>
+          <WillShowUI>OnError</WillShowUI>
+        </OSImage>
+      </ImageInstall>
+
+      <ComputerName>{{COMPUTER_NAME}}</ComputerName>
+
     </component>
   </settings>
 
+  <!-- ========================= -->
+  <!-- 2. specialize Pass        -->
+  <!-- ========================= -->
+  <settings pass="specialize">
+    <component name="Microsoft-Windows-Shell-Setup" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS" xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+
+      <ComputerName>{{COMPUTER_NAME}}</ComputerName>
+      <TimeZone>{{TIMEZONE}}</TimeZone>
+
+    </component>
+
+  </settings>
+
+  <!-- ========================= -->
+  <!-- 3. oobeSystem Pass        -->
+  <!-- ========================= -->
   <settings pass="oobeSystem">
-    <component name="Microsoft-Windows-Shell-Setup" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" language="" versionScope="nonSxS">
+    <component name="Microsoft-Windows-Shell-Setup" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS" xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+
+      <!-- Skip first-boot OOBE -->
       <OOBE>
         <HideEULAPage>true</HideEULAPage>
-        <NetworkLocation>Work</NetworkLocation>
+        <HideLocalAccountScreen>true</HideLocalAccountScreen>
+        <HideOEMRegistrationScreen>true</HideOEMRegistrationScreen>
+        <HideOnlineAccountScreens>true</HideOnlineAccountScreens>
         <ProtectYourPC>3</ProtectYourPC>
       </OOBE>
+
+      <!-- Create Local Admin -->
       <UserAccounts>
-        <AdministratorPassword>
-          <Value>$($Config.DefaultPassword)</Value>
-          <PlainText>true</PlainText>
-        </AdministratorPassword>
+        <LocalAccounts>
+          <LocalAccount wcm:action="add">
+            <Name>{{LOCAL_ADMIN}}</Name>
+            <Group>Administrators</Group>
+            <Password>
+              <Value>{{LOCAL_ADMIN_PASSWORD}}</Value>
+              <PlainText>true</PlainText>
+            </Password>
+          </LocalAccount>
+        </LocalAccounts>
       </UserAccounts>
+
+      <!-- Auto Logon (optional) -->
+      <!-- Remove if not needed -->
       <AutoLogon>
-        <Enabled>true</Enabled>
-       LogonCount>1</LogonCount>
-        <Username>Administrator</Username>
         <Password>
-          <Value>$($Config.DefaultPassword)</Value>
+          <Value>{{LOCAL_ADMIN_PASSWORD}}</Value>
           <PlainText>true</PlainText>
         </Password>
+        <Enabled>true</Enabled>
+        <Username>{{LOCAL_ADMIN}}</Username>
+        <LogonCount>1</LogonCount>
       </AutoLogon>
+
     </component>
   </settings>
 
-  <cpi:offlineImage cpi:source="wim://wimfile" xmlns:cpi="urn:schemas-microsoft-com:cpi" />
+  <cpi:offlineImage cpi:source="wim://{{WIM_PATH}}#{{IMAGE_NAME}}" xmlns:cpi="urn:schemas-microsoft-com:cpi" />
+
 </unattend>
-"@
+'@
+
+# Replace placeholders in unattend.xml
+$unattendXml = $unattendXml -replace '{{COMPUTER_NAME}}', $CloneName
+$unattendXml = $unattendXml -replace '{{TIMEZONE}}', "Central European Standard Time"
+$unattendXml = $unattendXml -replace '{{LOCAL_ADMIN}}', 'Administrator'
+$unattendXml = $unattendXml -replace '{{LOCAL_ADMIN_PASSWORD}}', $Config.DefaultPassword
+
+
 
 try {
     Write-Host "Creating unattend at $oobConfigPath..."
     Write-Log "Creating unattend at $oobConfigPath..." 'INFO'
-    $unattendXml | Set-Content -Path $oobConfigPath -Encoding utf8BOM -Force
+    $unattendXml | Out-File -FilePath $oobConfigPath -Encoding UTF8 -Force
     Write-Host "Unattend created."
     Write-Log "Unattend created successfully at $oobConfigPath." 'INFO'
 }
@@ -623,57 +756,35 @@ catch {
     exit
 }
 
-$vmDiskPath = Join-Path -Path $ImportPath -ChildPath "Virtual Hard Disks\$CloneName.vhdx"
+$vmDiskPath = Join-Path -Path $ImportPath -ChildPath "Virtual Hard Disks\$($CloneName).vhdx"
 $mounted = $false
 try {
-    Write-Host "Mounting $vmDiskPath ..."
-    Write-Log "Mounting $vmDiskPath ..." 'INFO'
+    Write-Host "Mounting $($vmDiskPath) ..."
+    Write-Log "Mounting $($vmDiskPath) ..." 'INFO'
     
-    Mount-DiskImage -ImagePath $vmDiskPath -PassThru | Out-Null
+    Mount-DiskImage -ImagePath $vmDiskPath -Passthru | Out-Null
     $mounted = $true
-
+    
     Write-Host "Mounted VHDX successfully."
     Write-Log "Mounted VHDX successfully." 'INFO'
+    
+    $disk = Get-DiskImage -ImagePath $vmDiskPath | Get-Disk | Get-Partition | Where-Object { $_.Type -eq 'Basic' } | Select-Object -First 1
+    Set-Partition -DiskNumber $disk.DiskNumber -PartitionNumber $disk.PartitionNumber -NewDriveLetter "X" | Out-Null
+    $osDrive = (Get-Partition -DiskNumber $disk.DiskNumber -PartitionNumber $disk.PartitionNumber).DriveLetter + ":"
 
-    $disk = Get-DiskImage -ImagePath $vmDiskPath | Get-Disk
-    Write-Log "Retrieved disk information for mounted VHDX." 'DEBUG'
-    $osDrive = $null
-    foreach ($p in ($disk | Get-Partition | Where-Object DriveLetter)) {
-        $dl = "$($p.DriveLetter):"
-        Write-Log "Checking partition $dl for Windows\System32..." 'DEBUG'
-        if (Test-Path "$dl\Windows\System32") {
-            $osDrive = $dl;
-            break 
-        }
-    }
-    if (-not $osDrive) {
-        Write-Host "Failed to locate OS volume in mounted VHDX, check the logs for more details." -ForegroundColor Red
-        Write-Log "Failed to locate OS volume in mounted VHDX. Exiting script." 'ERROR'
-        Exit
-    }
-    Write-Host "OS volume detected at $osDrive"
-    Write-Log "OS volume detected at $osDrive" 'INFO'
+    Write-Host "OS Drive Letter is $($osDrive)"
+    Write-Log "OS Drive Letter is $($osDrive)" 'INFO'
 
-    foreach ($dst in @("$osDrive\Windows\Panther", "$osDrive\Windows\System32\Sysprep")) {
-        if (-not (Test-Path $dst)) {
-            Write-Host "Creating directory $dst ..."
-            Write-Log "Creating directory $dst ..." 'INFO'
-            New-Item -ItemType Directory -Path $dst -Force | Out-Null
-        } else {
-            Write-Host "Directory $dst already exists. Continuing..."
-            Write-Log "Directory $dst already exists. Continuing..." 'INFO'
-        }
-    }
+    $dst = "$($osDrive)\Windows\Panther"
+
 
     Write-Host "Injecting unattend.xml into the VM disk..."
     Write-Log "Injecting unattend.xml into the VM disk..." 'INFO'
-    Copy-Item -Path $oobConfigPath -Destination "$($osDrive)\Windows\Panther\unattend.xml" -Force
+    Copy-Item -Path "$($oobConfigPath)" -Destination "$($dst)\unattend.xml" -Force
 
     Write-Host "Copied unattend.xml to Panther."
     Write-Log "Copied unattend.xml to Panther." 'INFO'
-    Copy-Item -Path $oobConfigPath -Destination "$($osDrive)\Windows\System32\Sysprep\unattend.xml" -Force
-    Write-Host "Copied unattend.xml to Panther and Sysprep."
-    Write-Log "Copied unattend.xml to Sysprep." 'INFO'
+
 }
 catch {
     Write-Host "An error occurred while injecting unattend.xml into the VM disk, Check the logs for more details." -ForegroundColor Red
@@ -688,6 +799,8 @@ finally {
     }
 }
 #endregion
+
+Start-Sleep -Seconds 3
 
 $cred = New-Object System.Management.Automation.PSCredential(
     'Administrator',
@@ -709,8 +822,15 @@ catch {
 }
 
 Start-VM -Name $CloneName | Out-Null
-$result = Wait-VMReady -VMName $CloneName -Stages Running,Heartbeat,IP,PsDirect -Credential $cred -Verbose
-$result | Format-List | Out-String | Write-Host
+Write-Host "Waiting for VM $($CloneName) to be running and ready..."
+Write-Log "Waiting for VM $($CloneName) to be running and ready..." 'INFO'
+While ((-not (Get-VM -Name $CloneName).State -eq 'Running') -and (-not (Get-VM -Name $CloneName).Heartbeat -eq 'Ok')) {
+    Write-Host "VM $($CloneName) is not ready yet. Checking again in 2 seconds..."
+    Write-Log "VM $($CloneName) is not ready yet. Waiting..." 'INFO'
+    Start-Sleep -Seconds 2
+}
+
+
 Write-Log "VM $($CloneName) is running and ready." 'INFO'
 #endregion
 
@@ -805,3 +925,5 @@ Write-Log '--------Clone VM Script Completed--------' 'INFO'
 # Clean up log jobs
 Get-Job | Where-Object { $_.ScriptBlock.ToString().Contains('Add-Content') } | Remove-Job -Force
 exit 0
+
+
