@@ -14,8 +14,6 @@
 # Import the Start-Menu module
 . "$PSScriptRoot/modules/Start-Menu.ps1"
 
-
-$toolName = "Hyper-V Management Tool"
 $version = "v1.0.0"
 
 
@@ -29,11 +27,6 @@ Version : $version
 Author  : Xander Waeghe
 GitHub  : https://github.com/XWippie/HyperV-Tools
 Date    : 18/09/2025
-
-Instructions:
-  - Use UP / DOWN arrow keys to navigate the menu
-  - Press Enter to select an option
-  - Press 1-9 to quickly select an option
 
 ==========================================
 "@
@@ -54,8 +47,15 @@ $menuOptions = @(
 # Start the menu and capture the selected option
 $selectedOption = Start-Menu -Options $menuOptions -Title "Please what you want to do:"
 
+Clear-MenuRegion -Top $selectedOption.MenuTop -Height $selectedOption.MenuHeight
+
+# Move cursor under welcome bar
+[Console]::SetCursorPosition(0, $selectedOption.MenuTop)
+
+Write-Host "You selected: $($selectedOption.Option)" -ForegroundColor Green
+
 # Handle the selected option
-switch ($selectedOption) {
+switch ($selectedOption.Option) {
     "1 > View Information" {
         Write-Host "You chose to view information." -ForegroundColor Green
     }

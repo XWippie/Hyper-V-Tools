@@ -1,7 +1,3 @@
-# ===============================
-# Hyper-V Management Tool Menu
-# ===============================
-
 function Show-Menu {
     param (
         [string[]] $options,
@@ -9,98 +5,66 @@ function Show-Menu {
         [int] $menuTop
     )
 
-    $windowWidth = [Console]::WindowWidth
+    $width = [Console]::WindowWidth
 
     for ($i = 0; $i -lt $options.Count; $i++) {
-        $linePosition = $menuTop + $i
-        [Console]::SetCursorPosition(0, $linePosition)
-        [Console]::Write(" " * ($windowWidth - 1))
-        [Console]::SetCursorPosition(0, $linePosition)
+        [Console]::SetCursorPosition(0, $menuTop + $i)
 
         if ($i -eq $currentOption) {
-            Write-Host "> $($options[$i])" -ForegroundColor Yellow
+            [Console]::ForegroundColor = [ConsoleColor]::Yellow
+            $text = "> $($options[$i])"
         }
         else {
-            Write-Host "  $($options[$i])" -ForegroundColor Gray
+            [Console]::ForegroundColor = [ConsoleColor]::Gray
+            $text = "  $($options[$i])"
         }
+
+        [Console]::Write($text.PadRight($width - 1))
     }
+
+    [Console]::ResetColor()
+}
+
+function Clear-MenuRegion {
+    param (
+        [int] $Top,
+        [int] $Height
+    )
+
+    $width = [Console]::WindowWidth
+
+    for ($i = 0; $i -lt $Height; $i++) {
+        [Console]::SetCursorPosition(0, $Top + $i)
+        [Console]::Write(" " * ($width - 1))
+    }
+
+    [Console]::SetCursorPosition(0, $Top)
 }
 
 function Start-Menu {
     param (
         [string[]] $options,
-        [string] $title = "Please select an option:",
-        [int] $DefaultIndex = 0
+        [string] $title
     )
 
-    if (-not $options -or $options.Count -eq 0) {
-        throw "Start-Menu: You must provide at least one option."
-    }
+    [Console]::CursorVisible = $false
 
-    # listen to key presses
-    $currentOption = $DefaultIndex
+    $currentOption = 0
     $menuTop = [Console]::CursorTop + 2
-    $exitMenu = $false
-    $selectedOption = $null
-    $windowWidth = [Console]::WindowWidth
-    $windowHeight = [Console]::WindowHeight
-    $menuHeight = $options.Count + 2
-    $menuBottom = $menuTop + $menuHeight - 1
-    $titleLines = $title -split "`n"
-    $titleHeight = $titleLines.Count + 1
-    $totalMenuHeight = $titleHeight + $menuHeight
-    $titleTop = $menuTop - $titleHeight
-    $titleBottom = $menuTop - 1
-    $initialCursorTop = [Console]::CursorTop
-    $initialCursorLeft = [Console]::CursorLeft
-    $initialBufferHeight = [Console]::BufferHeight
-    $initialBufferWidth = [Console]::BufferWidth
-    $initialWindowHeight = [Console]::WindowHeight
-    $initialWindowWidth = [Console]::WindowWidth
-    $needToRedraw = $true
-    $keyInfo = $null
-    $originalTitle = [Console]::Title
-    [Console]::Title = $title
+    $menuHeight = $options.Count
+    $exit = $false
+    $selected = $null
 
-    # Adjust buffer size if necessary
-    if ($initialBufferHeight -lt $initialWindowHeight + $totalMenuHeight) {
-        [Console]::BufferHeight = $initialWindowHeight + $totalMenuHeight
-    }
-    if ($initialBufferWidth -lt $initialWindowWidth) {
-        [Console]::BufferWidth = $initialWindowWidth
-    }
-    # Adjust window size if necessary
-    if ($initialWindowHeight -lt $totalMenuHeight + 2) {
-        [Console]::WindowHeight = [Math]::Min($initialBufferHeight, $totalMenuHeight + 2)
-    }
-    if ($initialWindowWidth -lt 50) {
-        [Console]::WindowWidth = [Math]::Min($initialBufferWidth, 50)
-    }
-    # Main loop
-    while (-not $exitMenu) {
-        if ($needToRedraw) {
-            # Draw title
-            for ($i = 0; $i -lt $titleLines.Count; $i++) {
-                $linePosition = $titleTop + $i
-                [Console]::SetCursorPosition(0, $linePosition)
-                [Console]::Write(" " * ($windowWidth - 1))
-                [Console]::SetCursorPosition(0, $linePosition)
-                Write-Host $titleLines[$i] -ForegroundColor Cyan
-            }
-            [Console]::SetCursorPosition(0, $titleBottom)
-            [Console]::Write(" " * ($windowWidth - 1))
-            [Console]::SetCursorPosition(0, $titleBottom)
-            Write-Host ("=" * ($windowWidth - 1)) -ForegroundColor Cyan
+    # Draw title
+    Write-Host $title -ForegroundColor Cyan
+    Write-Host ("=" * [Console]::WindowWidth) -ForegroundColor Cyan
 
-            # Draw menu
-            Show-Menu -options $options -currentOption $currentOption -menuTop $menuTop
-            $needToRedraw = $false
-        }
+    Show-Menu -options $options -currentOption $currentOption -menuTop $menuTop
 
-        # Read key input
-        $keyInfo = [Console]::ReadKey($true)
+    while (-not $exit) {
+        $key = [Console]::ReadKey($true)
 
-        switch ($keyInfo.Key) {
+        switch ($key.Key) {
             'UpArrow' {
                 if ($currentOption -gt 0) {
                     $currentOption--
@@ -114,33 +78,20 @@ function Start-Menu {
                 }
             }
             'Enter' {
-                $selectedOption = $options[$currentOption]
-                $exitMenu = $true
-            }
-            'D1'.'D9' {
-                $index = [int]$keyInfo.KeyChar - 1
-                if ($index -ge 0 -and $index -lt $options.Count) {
-                    $currentOption = $index
-                    Show-Menu -options $options -currentOption $currentOption -menuTop $menuTop
-                    $selectedOption = $options[$currentOption]
-                    $exitMenu = $true
-                }
+                $selected = $options[$currentOption]
+                $exit = $true
             }
             'Escape' {
-                $selectedOption = $null
-                $exitMenu = $true
+                $exit = $true
             }
         }
     }
-    # Cleanup
-    [Console]::SetCursorPosition(0, $menuBottom + 1)
-    [Console]::Write(" " * ($windowWidth - 1))
-    [Console]::SetCursorPosition(0, $menuBottom + 1)
-    [Console]::Title = $originalTitle
-    [Console]::SetCursorPosition($initialCursorLeft, $initialCursorTop)
-    [Console]::BufferHeight = $initialBufferHeight
-    [Console]::BufferWidth = $initialBufferWidth
-    [Console]::WindowHeight = $initialWindowHeight
-    [Console]::WindowWidth = $initialWindowWidth
-    return $selectedOption
+
+    [Console]::CursorVisible = $true
+
+    return [pscustomobject]@{
+        Option = $selected
+        MenuTop        = $menuTop
+        MenuHeight     = $menuHeight
+    }
 }

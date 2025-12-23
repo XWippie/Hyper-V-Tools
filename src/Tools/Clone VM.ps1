@@ -6,19 +6,25 @@
     and allows the user to configure various settings for the cloned VM, including memory,
     CPU, disk size, and Out-Of-Box Experience (OOBE) settings.
 .NOTES
-    Author: XWippie
+    Author: Xander Waeghe
     Date: 11 Nov 2025
     Version: 1.1
 
     Half tested on Windows Server 2025 with Hyper-V role installed.
     Use at your own risk.
+    
+    PREREQUISITES:
+    - VM Template with no network adapters attached
+    - Hyper-V PowerShell module installed
+    - Administrative privileges to run the script
+
 #>
 
 #
 # Configuration
 #region
 $config = @{
-    'TemplateVM'        = 'TemplateVM'
+    'TemplateVM'        = 'LYBATemplate2025'
     'TemplateVMPath'    = 'C:\\ClusterStorage\\SharedStorage\\Export'
     'ImportPathOptions' = @(
         'C:\\ClusterStorage\\SharedStorage\\VMs',
@@ -30,13 +36,12 @@ $config = @{
 $LogFile = "$($PSScriptRoot)\logs\" + ((Get-Date).ToString('ddMMyyHHmmss')) + '_CloneVM.log'
 
 $cred = New-Object System.Management.Automation.PSCredential(
-    'Administrator',
+    '.\Administrator',
     ($Config.DefaultPassword | ConvertTo-SecureString -AsPlainText -Force)
 )
 
 $ErrorActionPreference = 'Stop'
 #endregion
-
 
 #
 # Logging
@@ -296,6 +301,17 @@ if (Get-VM -Name $CloneName -ErrorAction SilentlyContinue) {
     Write-Log "A VM with the name $($CloneName) already exists. Exiting script." 'ERROR'
     exit
 }
+
+# change the logging path to include the clone name ...\clonename\file
+$oldLogFile = $LogFile
+$LogFile = "$($PSScriptRoot)\logs\$($CloneName)\" + ((Get-Date).ToString('ddMMyyHHmmss')) + '_CloneVM.log'
+# rename and move
+# Create the logs directory for the clone if it doesn't exist
+if (-Not (Test-Path -Path "$($PSScriptRoot)\logs\$($CloneName)")) {
+    New-Item -ItemType Directory -Path "$($PSScriptRoot)\logs\$($CloneName)" | Out-Null
+}
+# copy the log file to the new location
+Move-Item -Path $oldLogFile -Destination $LogFile
 
 $ImportPath = Get-Input -prompt 'Select the import path for the cloned VM' -defaultValue 1 -inputType 'int' -options $config.ImportPathOptions
 
@@ -842,10 +858,10 @@ Write-Log "VM $($CloneName) is running and ready." 'INFO'
 #
 # Configure Static IP if needed
 #region
-if (-Not (Get-VMNetworkAdapter -VMName $CloneName -ErrorAction SilentlyContinue)) {
-    Write-Host "No network adapter found for VM $($CloneName). Adding a new network adapter..."
-    Write-Log "No network adapter found for VM $($CloneName). Adding a new network adapter..." 'INFO'
-    
+#ask if user wants to add a network adapter
+function Set-NewNetAdapter {
+    Write-Host "Configuring network adapter for VM $($CloneName)..."
+
     try {
         $switches = Get-VMSwitch | Select-Object -ExpandProperty Name
         $switchOptions = @()
@@ -864,7 +880,9 @@ if (-Not (Get-VMNetworkAdapter -VMName $CloneName -ErrorAction SilentlyContinue)
     }
 
     try {
-        Add-VMNetworkAdapter -VMName $CloneName -SwitchName $selectedSwitch
+        $newAdaptor = Add-VMNetworkAdapter -VMName $CloneName -SwitchName $selectedSwitch -PassThru 
+        $newAdaptorMac = $newAdaptor.MacAddress
+        $newAdaptorMac = ($newAdaptorMac -split '(.{2})' | Where-Object { $_ -ne '' }) -join '-'   
         Write-Host "Added network adapter to VM $($CloneName)."
         Write-Log "Added network adapter to VM $($CloneName)." 'INFO'
     }
@@ -876,12 +894,12 @@ if (-Not (Get-VMNetworkAdapter -VMName $CloneName -ErrorAction SilentlyContinue)
 
     try {
         $vlanChoice = Get-Input -prompt "Do you want to set a VLAN ID for the network adapter on VM $($CloneName)? (y/n)" `
-            -defaultValue 'n' `
-            -inputType 'string' `
+        -defaultValue 'n' `
+        -inputType 'string' `
             -options @('y', 'n')
         if ($vlanChoice -eq 'y') {
             $vlanId = Get-Input -prompt "Enter the VLAN ID to set for the network adapter on VM $($CloneName)" -defaultValue 10 -inputType 'int'
-            Set-VMNetworkAdapterVlan -VMName $CloneName -Access -VlanId $vlanId
+            Set-VMNetworkAdapterVlan -VMName $CloneName -Access -VlanId $vlanId -VMNetworkAdapterName $newAdaptor.Name
             Write-Host "Set VLAN ID $($vlanId) for network adapter on VM $($CloneName)."
             Write-Log "Set VLAN ID $($vlanId) for network adapter on VM $($CloneName)." 'INFO'
         }
@@ -904,67 +922,89 @@ if (-Not (Get-VMNetworkAdapter -VMName $CloneName -ErrorAction SilentlyContinue)
         Write-Log "Details: $($_.Exception.Message)" 'ERROR'
     }
 
-}
-else {
-    Write-Host "Network adapter already exists for VM $($CloneName), continuing..."
-    Write-Log "Network adapter already exists for VM $($CloneName), continuing..." 'INFO'
-}
+    Write-Host "Configuring static IP address for VM $($CloneName) if needed..."
+    try {
+        $NetadaptorConfigReply = Get-Input -prompt "The VM $($CloneName) has been started.`nDo you want to configure a static IP address now? (y/n)" `
+            -defaultValue 'n' `
+            -inputType 'string' `
+            -options @('y', 'n')
+        if ($NetadaptorConfigReply -eq 'y') {
+            $ipAddress = Get-Input -prompt "Enter the static IP address for VM $($CloneName)" -defaultValue '192.168.1.100' -inputType 'string'
+            Write-Host "IP will be set to $($ipAddress)"
+            Write-Log "IP will be set to $($ipAddress) for VM $($CloneName)" 'INFO'
 
-Write-Host "Configuring static IP address for VM $($CloneName) if needed..."
-try {
-    $NetadaptorConfigReply = Get-Input -prompt "The VM $($CloneName) has been started.`nDo you want to configure a static IP address now? (y/n)" `
-        -defaultValue 'n' `
-        -inputType 'string' `
-        -options @('y', 'n')
-    if ($NetadaptorConfigReply -eq 'y') {
-        $ipAddress = Get-Input -prompt "Enter the static IP address for VM $($CloneName)" -defaultValue '192.168.1.100' -inputType 'string'
-        Write-Host "IP will be set to $($ipAddress)"
-        Write-Log "IP will be set to $($ipAddress) for VM $($CloneName)" 'INFO'
+            $prefixLength = Get-Input -prompt "Enter the subnet prefix length for VM $($CloneName) (e.g., 24)" -defaultValue 24 -inputType 'int'
+            Write-Host "Prefix length will be set to $($prefixLength)"
+            Write-Log "Prefix length will be set to $($prefixLength) for VM $($CloneName)" 'INFO'
 
-        $prefixLength = Get-Input -prompt "Enter the subnet prefix length for VM $($CloneName) (e.g., 24)" -defaultValue 24 -inputType 'int'
-        Write-Host "Prefix length will be set to $($prefixLength)"
-        Write-Log "Prefix length will be set to $($prefixLength) for VM $($CloneName)" 'INFO'
+            $gateway = Get-Input -prompt "Enter the default gateway for VM $($CloneName)" -defaultValue '' -inputType 'string'
+            Write-Host "Gateway will be set to $($gateway)"
+            Write-Log "Gateway will be set to $($gateway) for VM $($CloneName)" 'INFO'
 
-        $gateway = Get-Input -prompt "Enter the default gateway for VM $($CloneName)" -defaultValue '192.168.1.1' -inputType 'string'
-        Write-Host "Gateway will be set to $($gateway)"
-        Write-Log "Gateway will be set to $($gateway) for VM $($CloneName)" 'INFO'
+            $dnsServersInput = Get-Input -prompt "Enter the DNS server addresses for VM $($CloneName) separated by commas" -defaultValue '' -inputType 'string'
+            Write-Host "DNS servers will be set to $($dnsServersInput)"
+            Write-Log "DNS servers will be set to $($dnsServersInput) for VM $($CloneName)" 'INFO'
 
-        $dnsServersInput = Get-Input -prompt "Enter the DNS server addresses for VM $($CloneName) separated by commas" -defaultValue '8.8.8.8, 8.8.4.4' -inputType 'string'
-        Write-Host "DNS servers will be set to $($dnsServersInput)"
-        Write-Log "DNS servers will be set to $($dnsServersInput) for VM $($CloneName)" 'INFO'
+            $dnsServers = $dnsServersInput -split ',\s*'
 
-        $dnsServers = $dnsServersInput -split ',\s*'
+            $scriptBlock = {
+                param ($ipAddress, $prefixLength, $gateway, $dnsServers, $adapterName, $newAdaptorMac)
+                $adapter = Get-NetAdapter | Where-Object { $_.MacAddress -eq $newAdaptorMac } | Select-Object -First 1
 
-        $scriptBlock = {
-            param ($ipAddress, $prefixLength, $gateway, $dnsServers, $adapterName)
-            $adapter = Get-NetAdapter | Where-Object { $_.Status -eq 'Up' } | Select-Object -First 1
+                Set-NetIPInterface -InterfaceAlias $adapter.Name -Dhcp Disabled
 
-            Set-NetIPInterface -InterfaceAlias $adapter.Name -Dhcp Disabled
-            New-NetIPAddress -InterfaceAlias $adapter.Name -IPAddress $ipAddress -PrefixLength $prefixLength -DefaultGateway $gateway
-            Set-DnsClientServerAddress -InterfaceAlias $adapter.Name -ServerAddresses $dnsServers
-            Set-NetAdapterBinding -Name $adapter.Name -ComponentID ms_tcpip6 -Enabled $false
-            Rename-NetAdapter -Name $adapter.Name -NewName $adapterName
-        }
+                if ($gateway -ne '') {
+                    New-NetIPAddress -InterfaceAlias $adapter.Name -IPAddress $ipAddress -PrefixLength $prefixLength -DefaultGateway $gateway
+                } else {
+                    New-NetIPAddress -InterfaceAlias $adapter.Name -IPAddress $ipAddress -PrefixLength $prefixLength 
+                }
 
-        Write-Host "Applying network configuration to VM $($CloneName)..."
-        Write-Log "Applying network configuration to VM $($CloneName)..." 'INFO'
-        
-        try {
-            Invoke-Command -VMName $CloneName -ScriptBlock $scriptBlock -ArgumentList $ipAddress, $prefixLength, $gateway, $dnsServers, $adapterName -Credential $cred
-            Write-Host "Configured static IP address for VM $($CloneName)."
-            Write-Log "Configured static IP address for VM $($CloneName)." 'INFO'
-        }
-        catch {
-            Write-Host "An error occurred while configuring static IP address for VM $($CloneName), Check the logs for more details." -ForegroundColor Red
-            Write-Log "An error occurred while configuring static IP address for VM $($CloneName). Exiting script." 'ERROR'
-            Write-Log "Details: $($_.Exception.Message)" 'ERROR'
+                If ($dnsServers.Count -gt 0 -and $dnsServers[0] -ne '') {
+                    Set-DnsClientServerAddress -InterfaceAlias $adapter.Name -ServerAddresses $dnsServers
+                }
+                
+                Set-NetAdapterBinding -Name $adapter.Name -ComponentID ms_tcpip6 -Enabled $false
+                Rename-NetAdapter -Name $adapter.Name -NewName $adapterName
+            }
+
+            Write-Host "Applying network configuration to VM $($CloneName)..."
+            Write-Log "Applying network configuration to VM $($CloneName)..." 'INFO'
+            
+            try {
+                Invoke-Command -VMName $CloneName -ScriptBlock $scriptBlock -ArgumentList $ipAddress, $prefixLength, $gateway, $dnsServers, $adapterName, $newAdaptorMac -Credential $cred
+                Write-Host "Configured static IP address for VM $($CloneName)."
+                Write-Log "Configured static IP address for VM $($CloneName)." 'INFO'
+            }
+            catch {
+                Write-Host "An error occurred while configuring static IP address for VM $($CloneName), Check the logs for more details." -ForegroundColor Red
+                Write-Log "An error occurred while configuring static IP address for VM $($CloneName). Exiting script." 'ERROR'
+                Write-Log "Details: $($_.Exception.Message)" 'ERROR'
+            }
         }
     }
+    catch {
+        Write-Host "An error occurred during static IP configuration prompt, Check the logs for more details." -ForegroundColor Red
+        Write-Log "An error occurred during static IP configuration prompt. Exiting script." 'ERROR'
+        Write-Log "Details: $($_.Exception.Message)" 'ERROR'
+    }
+    finally {
+        Remove-VMNetworkAdapter -VMName $CloneName -Name $newAdaptor.Name -ErrorAction SilentlyContinue
+    }
 }
-catch {
-    Write-Host "An error occurred during static IP configuration prompt, Check the logs for more details." -ForegroundColor Red
-    Write-Log "An error occurred during static IP configuration prompt. Exiting script." 'ERROR'
-    Write-Log "Details: $($_.Exception.Message)" 'ERROR'
+
+while ($true) {
+    $addNetworkAdapter = Get-Input -prompt "Do you want to add a network adapter to the new VM $($CloneName)? (y/n)" `
+        -defaultValue 'y' `
+        -inputType 'string' `
+        -options @('y', 'n')
+    if ($addNetworkAdapter -eq 'y') {
+        Set-NewNetAdapter
+    }
+    elseif ($addNetworkAdapter -eq 'n') {
+        Write-Host "Skipping network adapter configuration for VM $($CloneName)."
+        Write-Log "Skipping network adapter configuration for VM $($CloneName)." 'INFO'
+        break
+    }
 }
 #endregion
 
@@ -997,7 +1037,9 @@ else {
 }
 #endregion
 
+#
 # remove unattend file
+#region
 try {
     $removeUnattendScriptBlock = {
         $unattendPath = "C:\Windows\Panther\unattend.xml"
@@ -1016,7 +1058,11 @@ catch {
     Write-Log "An error occurred while removing unattend.xml from VM $($CloneName). Exiting script." 'ERROR'
     Write-Log "Details: $($_.Exception.Message)" 'ERROR'
 }
+#endregion
 
+#
+# Post configuration
+#region
 # ask the user for a password of the local admin account (secure)
 try {
     $newPassword = Read-Host "Please enter a new password for the local administrator account on VM $($CloneName)" -AsSecureString
@@ -1038,7 +1084,7 @@ catch {
 }
 
 #Setting new credentials for further operations
-$cred = New-Object System.Management.Automation.PSCredential ('Administrator', $newPassword)
+$cred = New-Object System.Management.Automation.PSCredential ('.\Administrator', $newPassword)
 
 #Domain joining
 #ask the use if they want to join the vm to a domain
@@ -1061,6 +1107,11 @@ else {
         Write-Host "Joining VM $($CloneName) to domain $($domainName)..."
         Write-Log "Joining VM $($CloneName) to domain $($domainName)..." 'INFO'
         Invoke-Command -VMName $CloneName -ScriptBlock $joinDomainScriptBlock -ArgumentList $domainName, $ouPath, $Domcreds -Credential $cred
+
+        while ((Get-VM -Name $CloneName).Uptime.TotalSeconds -gt 60) {
+            Write-Host "Waiting for VM $($CloneName) to restart and join the domain..."
+            Start-Sleep -Seconds 1
+        }
     }
     catch {
         Write-Host "An error occurred while joining VM $($CloneName) to domain $($domainName), Check the logs for more details." -ForegroundColor Red
@@ -1072,6 +1123,7 @@ else {
     }
     Wait-VMReady -VMName $CloneName
 }
+#endregion
 
 
 
@@ -1094,6 +1146,7 @@ catch {
     Write-Log "An error occurred while moving VM $($CloneName) to its preferred host. Exiting script." 'ERROR'
     Write-Log "Details: $($_.Exception.Message)" 'ERROR'
 }
+#endregion
 
 Write-Host 'VM cloning process completed successfully.'
 Write-Log '--------Clone VM Script Completed--------' 'INFO'
