@@ -1,0 +1,3 @@
+@TITLE Updating background system info...
+@reg add HKU\.DEFAULT\Software\Sysinternals\BGInfo /v EulaAccepted /t REG_DWORD /d 1 /f > nul
+@C:\Software\BG_info\bginfo.exe C:\Software\BG_info\bginfo.bgi /timer:0 /silent /nolicprompt
