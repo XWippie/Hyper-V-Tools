@@ -1011,7 +1011,7 @@ while ($true) {
 #
 # Disk Extension
 #region
-if ($NetadaptorConfigReply -eq 'y') {
+if ($diskSizeGB -gt 50) {
     $extendScriptBlock = {
         $drive_letter = "C"
         $size = (Get-PartitionSupportedSize -DriveLetter $drive_letter)
@@ -1032,8 +1032,8 @@ if ($NetadaptorConfigReply -eq 'y') {
     }
 }
 else {
-    Write-Host "Skipping disk extension as static IP configuration was not performed."
-    Write-Log "Skipping disk extension as static IP configuration was not performed." 'INFO'
+    Write-Host "Skipping disk extension as disk size is not greater than 50 GB. (Default size)"
+    Write-Log "Skipping disk extension as disk size is not greater than 50 GB. (Default size)" 'INFO'
 }
 #endregion
 
@@ -1128,6 +1128,11 @@ else {
 
 
 # move the vm to its preferred host if set
+if (-not $ImportPath -like '*ClusterStorage*') {
+    Write-Host 'VM cloning process completed successfully.'
+    Write-Log '--------Clone VM Script Completed--------' 'INFO'
+    exit 0
+}
 try {
     #if preferred is current host skip
     $currentHost = (Get-VMHost).Name

@@ -14,7 +14,7 @@
     Date Created: Dec 2025
 #>
 
-$errorActionPreference = "Stop"
+$errorActionPreference = "SilentlyContinue"
 
 Write-Host @"
 ==========================================
@@ -23,15 +23,16 @@ Write-Host @"
 
     Requires Administrator Privileges
 
- Author: Xander Waeghe
- Date: Dec 2025
+ Author  : Xander Waeghe
+ GitHub  : https://github.com/XWippie/HyperV-Tools
+ Date    : 18/09/2025
 ==========================================
 "@ -ForegroundColor Cyan
 
-# Check for Administrator privileges
+# Pre-requisite check for Administrator privileges
+Write-Host "> Checking for Administrator privileges..." -ForegroundColor DarkGray
 if (-not ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole] "Administrator")) {
-    Write-Warning "Must be executed in Administrator level shell."
-    exit 1
+    Throw "Script requires Administrator privileges. Exiting."
 }
 Write-Host "> Running with Administrator privileges." -ForegroundColor Green
 
@@ -63,26 +64,26 @@ System Information:
 # --- Quality Of Life Changes ---
 #region
 # Creating all needed paths
-New-Item -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer" -ErrorAction SilentlyContinue | Out-Null
-New-Item -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" -ErrorAction SilentlyContinue | Out-Null
-New-Item -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\CabinetState" -ErrorAction SilentlyContinue | Out-Null
-New-Item -Path "HKCU:\Software\Classes\CLSID\" -ErrorAction SilentlyContinue | Out-Null
-New-Item -Path "HKCU:\Software\Classes\CLSID\{86ca1aa0-34aa-4e8b-a509-50c905bae2a2}" -ErrorAction SilentlyContinue | Out-Null
-New-Item -Path "HKCU:\Software\Classes\CLSID\{86ca1aa0-34aa-4e8b-a509-50c905bae2a2}\InprocServer32" -ErrorAction SilentlyContinue | Out-Null
-New-Item -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\ControlPanel" -ErrorAction SilentlyContinue | Out-Null
-New-Item -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\SearchSettings" -ErrorAction SilentlyContinue | Out-Null
-New-Item -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\ContentDeliveryManager" -ErrorAction SilentlyContinue | Out-Null
-New-Item -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Search" -ErrorAction SilentlyContinue | Out-Null
-New-Item -Path "HKCU:\Control Panel\Accessibility\StickyKeys" -ErrorAction SilentlyContinue | Out-Null
-New-Item -Path "HKCU:\Control Panel\Accessibility\ToggleKeys" -ErrorAction SilentlyContinue | Out-Null
-New-Item -Path "HKCU:\Control Panel\Accessibility\FilterKeys" -ErrorAction SilentlyContinue | Out-Null
-New-Item -Path "HKCU:\Control Panel\Desktop" -ErrorAction SilentlyContinue | Out-Null
+New-Item -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer" | Out-Null
+New-Item -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" | Out-Null
+New-Item -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\CabinetState" | Out-Null
+New-Item -Path "HKCU:\Software\Classes\CLSID\" | Out-Null
+New-Item -Path "HKCU:\Software\Classes\CLSID\{86ca1aa0-34aa-4e8b-a509-50c905bae2a2}" | Out-Null
+New-Item -Path "HKCU:\Software\Classes\CLSID\{86ca1aa0-34aa-4e8b-a509-50c905bae2a2}\InprocServer32" | Out-Null
+New-Item -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\ControlPanel" | Out-Null
+New-Item -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\SearchSettings" | Out-Null
+New-Item -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\ContentDeliveryManager" | Out-Null
+New-Item -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Search" | Out-Null
+New-Item -Path "HKCU:\Control Panel\Accessibility\StickyKeys" | Out-Null
+New-Item -Path "HKCU:\Control Panel\Accessibility\ToggleKeys" | Out-Null
+New-Item -Path "HKCU:\Control Panel\Accessibility\FilterKeys" | Out-Null
+New-Item -Path "HKCU:\Control Panel\Desktop" | Out-Null
 
 
 # Show File Extensions, Hidden Files, Full Path in Title Bar
-Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" -Name "HideFileExt" -Value "0" -Force | Out-Null
-Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" -Name "Hidden" -Value "1" -Force | Out-Null
-Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\CabinetState" -Name "FullPath" -Value "1" -Force | Out-Null
+Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" -Name "HideFileExt" -Value 0 -Force | Out-Null
+Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" -Name "Hidden" -Value 1 -Force | Out-Null
+Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\CabinetState" -Name "FullPath" -Value 1 -Force | Out-Null
 Write-Host "> Setting File Explorer to show file extensions, hidden files and full path in title bar." -ForegroundColor Green
 
 # Don't show recent files, Frequent folders
@@ -104,7 +105,7 @@ Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer
 Write-Host "> Setting Control Panel to All Items view." -ForegroundColor Green
 
 # Num Lock on Login
-Set-Itemproperty -path 'Microsoft.PowerShell.Core\Registry::HKEY_USERS\.Default\Control Panel\Keyboard' -Name 'InitialKeyboardIndicators' -value '2' -Force | Out-Null
+Set-ItemProperty -Path 'Registry::HKU\.DEFAULT\Control Panel\Keyboard' -Name "InitialKeyboardIndicators" -Value "2" -Force | Out-Null
 Write-Host "> Setting Num Lock to ON at login." -ForegroundColor Green
 
 # Align Taskbar to Left
@@ -114,10 +115,6 @@ Write-Host "> Aligning Taskbar to Left." -ForegroundColor Green
 # Display only search icon
 Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Search" -Name "SearchboxTaskbarMode" -Value 1 -Force | Out-Null
 Write-Host "> Setting Taskbar search to display only search icon." -ForegroundColor Green
-
-# Disable Taskbar Widgets
-Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" -Name "TaskbarDa" -Value 0 -Force | Out-Null
-Write-Host "> Disabling Taskbar Widgets." -ForegroundColor Green
 
 # Disable Taskbar Chat
 Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" -Name "TaskbarMn" -Value 0 -Force | Out-Null
@@ -156,6 +153,47 @@ Write-Host "> Disabling Filter Keys." -ForegroundColor Green
 #  Set Menu Delay to 0
 Set-ItemProperty -Path "HKCU:\Control Panel\Desktop" -Name "MenuShowDelay" -Value 0 -Force | Out-Null
 Write-Host "> Setting Menu Show Delay to 0." -ForegroundColor Green
+
+#Disable Search suggestions in File Explorer
+Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer" -Name "DisableSearchBoxSuggestions" -Value 1 -Force | Out-Null
+Write-Host "> Disabling Search suggestions in File Explorer." -ForegroundColor Green
+
+if ($osVersion -like "*Server*") {
+    # Disable Taskbar Widgets
+    Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" -Name "TaskbarDa" -Value 0 -Force | Out-Null
+    Write-Host "> Disabling Taskbar Widgets." -ForegroundColor Green
+
+    # Disable Windows server manager auto launch at login
+    Set-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\ServerManager" -Name "DoNotOpenServerManagerAtLogon" -Value 1 -Force | Out-Null
+    Write-Host "> Disabling Server Manager auto launch at login." -ForegroundColor Green
+
+    # Disable Azure Arc Sys Tray Icon
+    Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\StartupApproved\Run" -Name "AzureConnectedMachineAgent" -Value ([byte[]](0x03,0x00,0x00,0x00,0x00,0x00,0x00,0x00)) -Force | Out-Null
+
+} else {
+    # Disable Task View Button
+    Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" -Name "ShowTaskViewButton" -Value 0 -Force | Out-Null
+    Write-Host "> Disabling Task View Button." -ForegroundColor Green
+
+    # Disable Game Bar
+    Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\GameDVR" -Name "AppCaptureEnabled" -Value 0 -Force | Out-Null
+    Set-ItemProperty -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\GameDVR" -Name "AllowGameDVR" -Value 0 -Force | Out-Null
+    Write-Host "> Disabling Gamebar." -ForegroundColor Green
+
+    # Disable Windows Welciome Experience
+    Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\ContentDeliveryManager" -Name "SubscribedContent-310093Enabled" -Value 0 -Force | Out-Null
+
+}
+
+# Disable Advertising ID
+Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\AdvertisingInfo" -Name "Enabled" -Value 0 -Force | Out-Null
+Write-Host "> Disabling Advertising ID." -ForegroundColor Green
+
+# Disable activity history
+Set-ItemProperty -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\System" -Name "EnableActivityFeed" -Value 0 -Force | Out-Null
+Set-ItemProperty -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\System" -Name "PublishUserActivities" -Value 0 -Force | Out-Null
+
+
 
 # restart explorer to apply file explorer settings
 Stop-Process -Name Explorer -force
@@ -201,6 +239,8 @@ Write-Host "> Setting up BGInfo to run at startup." -ForegroundColor Green
 # Disable IE Enhanced Security Configuration
 # if os os server
 if ($osVersion -like "*Server*") {
+    New-Item -Path "HKLM:\SOFTWARE\Microsoft\Active Setup\Installed Components\{A509B1A7-37EF-4b3f-8CFC-4F3A74704073}" -ErrorAction SilentlyContinue | Out-Null
+    New-Item -Path "HKLM:\SOFTWARE\Microsoft\Active Setup\Installed Components\{A509B1A8-37EF-4b3f-8CFC-4F3A74704073}" -ErrorAction SilentlyContinue | Out-Null
     Set-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Active Setup\Installed Components\{A509B1A7-37EF-4b3f-8CFC-4F3A74704073}" -Name "IsInstalled" -Value 0 -Type DWord -Force | Out-Null
     Set-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Active Setup\Installed Components\{A509B1A8-37EF-4b3f-8CFC-4F3A74704073}" -Name "IsInstalled" -Value 0 -Type DWord -Force | Out-Null
     Write-Host "> Disabling IE Enha nced Security Configuration." -ForegroundColor Green
@@ -246,9 +286,6 @@ Write-Host "> Setting Event Log sizes." -ForegroundColor Green
 # disable IPv6
 Disable-NetAdapterBinding -Name * -ComponentID ms_tcpip6 | Out-Null
 Write-Host "> Disabling IPv6 on all network adapters." -ForegroundColor Green
-
-Set-NetConnectionProfile -InterfaceAlias * -NetworkCategory Private | Out-Null
-Write-Host "> Setting Network Profile to Private." -ForegroundColor Green
 #endregion
 
 #
@@ -278,11 +315,6 @@ Write-Host "> Enabling RDP Clipboard and Drive Redirection." -ForegroundColor Gr
 # Enable Network Level Authentication for RDP
 Set-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' 'UserAuthentication' 1 -Force
 Write-Host "> Enabling Network Level Authentication for RDP." -ForegroundColor Green
-
-# Enable Remote Desktop Firewall Rules
-Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
-Get-NetFirewallRule -DisplayGroup "Remote Desktop" | Set-NetFirewallRule -Profile Domain,Private
-Write-Host "> Enabling Remote Desktop Firewall Rules for Domain and Private profiles." -ForegroundColor Green
 #endregion
 
 #
@@ -471,98 +503,52 @@ foreach ($feature in $DisabledFeatures) {
 #
 # --- Disable Unnecessary Services ---
 #region
-$ServicesToDisable = @(
-    # Bluetooth / Wireless
+$SafeServicesToDisable = @(
+    # --- Legacy / Deprecated ---
+    "Browser"                 # Computer Browser (CIS required)
+    "RemoteRegistry"          # CIS explicitly requires Disabled
+
+    # --- Bluetooth (if no BT hardware) ---
     "AVCTP"
     "BTAGService"
     "bthserv"
 
-    # BitLocker / Disk
-    "BDESVC"
-
-    # Legacy / Deprecated
-    "Browser"
-    "irmon"
-    "smphost"
-    "NcbService"
-    "SACSVR"
-    "TapiSrv"
-    "StillImage"
-
-    # Telemetry / Diagnostics
-    "DiagTrack"
-    "dmwappushservice"
-    "DPS"
-    "WdiServiceHost"
-    "WdiSystemHost"
-    "DiagHub"
-    "wercplsupport"
-    "WerSvc"
-    "PcaSvc"
-
-    # Maps / Location / Sensors
+    # --- Maps / Location / Sensors ---
     "MapsBroker"
     "lfsvc"
     "SensorDataService"
     "SensorService"
     "SensrSvc"
 
-    # Networking / Sharing
-    "SharedAccess"
-    "iphlpsvc"
-    "QWAVE"
-    "RmSvc"
-    "RemoteRegistry"
-    "RemoteAccess"
-    "icssvc"
-
-    # Offline / Sync
+    # --- Offline Files / Backup ---
     "CscService"
     "fhsvc"
 
-    # Identity / Consumer
-    "wlidsvc"
+    # --- Consumer / Identity ---
+    "wlidsvc"                 # Microsoft Account Sign-In
     "PhoneSvc"
     "WalletService"
-    "LicenseManagerSvc"
 
-    # App / Store / App-V
+    # --- App Virtualization / UE-V ---
     "AppVClient"
-    "PushToInstall"
+    "UEVAgentService"
 
-    # Printing / Imaging
-    "Spooler"
-    "Wia"
+    # --- Media Sharing ---
+    "WMPNetworkSvc"
 
-    # Security / Credentials
-    "seclogon"
-    "WpcMonSvc"
-    "SEMgrSvc"
-    "WbioSrvc"
-
-    # Smart Card / USB
+    # --- Smart Card (if not used) ---
     "SCardSvr"
     "ScDeviceEnum"
     "SmartCardRemovalPolicy"
-    "WPDBusEnum"
-    "ShellHWDetection"
 
-    # Media / Audio / Camera
-    "Audiosrv"
-    "AudioEndpointBuilder"
-    "FrameServer"
-    "WMPNetworkSvc"
+    # --- Printing (ONLY if no printing is required) ---
+    "Spooler"
 
-    # Search / UI
     "WSearch"
-
-    # UE-V / Performance
-    "UEVAgentService"
-    "WarpJITSvc"
-
-    # Insider / Update
-    "wisvc"
+    "Wia"
+    "FrameServer"
 )
+
 
 foreach ($svc in $ServicesToDisable) {
     if (-not (Get-Service -Name $svc -ErrorAction SilentlyContinue)) {
@@ -600,19 +586,25 @@ $AppsToRemove = @(
     "Microsoft.BingTravel"
     "Microsoft.MicrosoftOfficeHub"
     "Microsoft.MicrosoftStickyNotes"
-    "Microsoft.Windows.NarratorQuickStart"
     "Microsoft.People"
     "Microsoft.SkypeApp"
     "Microsoft.WindowsMaps"
     "Microsoft.WindowsAlarms"
     "Microsoft.WindowsSoundRecorder"
     "Microsoft.WindowsFeedbackHub"
-    "Microsoft.MicrosoftEdge"
     "Microsoft.YourPhone"
+    "Microsoft.Whiteboard"
+    "Microsoft.MSPowerPoint"
+    "Microsoft.MSExcel"
+    "Microsoft.MSWord"
+    "Microsoft.Office.OneNote"
+    "Microsoft.YourPhone"
+    "Microsoft.MicrosoftTeams"
+
 )
 
 foreach ($app in $AppsToRemove) {
-    $package = Get-AppxPackage -Name $app -AllUsers -ErrorAction SilentlyContinue | Out-Null
+    $package = Get-AppxPackage -Name $app -AllUsers
     if ($package) {
         Remove-AppxPackage -Package $package.PackageFullName -AllUsers
         Write-Host "> Removing app package: $app" -ForegroundColor Green
@@ -680,7 +672,6 @@ Write-Host "> Enabling Windows Defender Firewall for all profiles." -ForegroundC
 New-Item  'HKLM:\Software\Policies\Microsoft\Windows\NT DNSClient' -ErrorAction SilentlyContinue | Out-Null
 Set-ItemProperty  'HKLM:\Software\Policies\Microsoft\Windows\NT DNSClient' 'EnableMulticast'  0 -Force
 Write-Host "> Blocking LLMNR." -ForegroundColor Green
-
 
 # Disable NetBIOS over TCP/IP
 Get-WmiObject Win32_NetworkAdapterConfiguration | Where-Object { $_.IPEnabled } | ForEach-Object { $_.SetTcpipNetbios(2) } | Out-Null
