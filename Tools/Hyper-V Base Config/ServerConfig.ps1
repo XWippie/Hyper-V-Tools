@@ -14,6 +14,8 @@
     Date Created: Dec 2025
 #>
 
+#TODO: https://community.spiceworks.com/t/remote-desktop-allow-admin-to-login-without-user-confirmation/278614
+
 $errorActionPreference = "SilentlyContinue"
 
 Write-Host @"
@@ -158,6 +160,8 @@ Write-Host "> Setting Menu Show Delay to 0." -ForegroundColor Green
 Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer" -Name "DisableSearchBoxSuggestions" -Value 1 -Force | Out-Null
 Write-Host "> Disabling Search suggestions in File Explorer." -ForegroundColor Green
 
+
+
 if ($osVersion -like "*Server*") {
     # Disable Taskbar Widgets
     Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" -Name "TaskbarDa" -Value 0 -Force | Out-Null
@@ -168,9 +172,10 @@ if ($osVersion -like "*Server*") {
     Write-Host "> Disabling Server Manager auto launch at login." -ForegroundColor Green
 
     # Disable Azure Arc Sys Tray Icon
-    Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\StartupApproved\Run" -Name "AzureConnectedMachineAgent" -Value ([byte[]](0x03,0x00,0x00,0x00,0x00,0x00,0x00,0x00)) -Force | Out-Null
+    Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\StartupApproved\Run" -Name "AzureConnectedMachineAgent" -Value ([byte[]](0x03, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00)) -Force | Out-Null
 
-} else {
+}
+else {
     # Disable Task View Button
     Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" -Name "ShowTaskViewButton" -Value 0 -Force | Out-Null
     Write-Host "> Disabling Task View Button." -ForegroundColor Green
@@ -220,15 +225,15 @@ $Shortcut.TargetPath = "C:\Software\BG_info\bginfo.cmd"
 $Shortcut.IconLocation = "C:\Software\BG_info\bginfo.ico"
 $Shortcut.Save()
 
-$FullAccess = "C:\Software\Background"
+$FullAccess = "C:\Software\BG_info"
 $acl = Get-Acl $FullAccess
 $InheritanceFlag = [System.Security.AccessControl.InheritanceFlags]::ContainerInherit -bor [System.Security.AccessControl.InheritanceFlags]::ObjectInherit
 $PropagationFlag = [System.Security.AccessControl.PropagationFlags]::None
-$rule = New-Object System.Security.AccessControl.FileSystemAccessRule -ArgumentList @("Everyone","FullControl",$InheritanceFlag, $PropagationFlag, "Allow")
+$rule = New-Object System.Security.AccessControl.FileSystemAccessRule -ArgumentList @("Everyone", "FullControl", $InheritanceFlag, $PropagationFlag, "Allow")
 $acl.SetAccessRule($rule)
 Set-Acl $FullAccess $acl
 
-Write-Host "> Setting up BGInfo to run at startup." -ForegroundColor Green
+Write-Host "> Setting up BGInfo." -ForegroundColor Green
 #endregion
 
 
@@ -489,12 +494,13 @@ $DisabledFeatures = @(
 )
 
 # Check if features are enabled before disabling
-$enabledFeatures = Get-WindowsOptionalFeature -Online | Where-Object {$_.State -eq 'Enabled'} | Select-Object -ExpandProperty FeatureName
+$enabledFeatures = Get-WindowsOptionalFeature -Online | Where-Object { $_.State -eq 'Enabled' } | Select-Object -ExpandProperty FeatureName
 foreach ($feature in $DisabledFeatures) {
     if ($enabledFeatures -contains $feature) {
         Write-Host "> Disabling feature: $feature" -ForegroundColor Green
         Disable-WindowsOptionalFeature -Online -FeatureName $feature -NoRestart -ErrorAction SilentlyContinue | Out-Null
-    } else {
+    }
+    else {
         Write-Host "> Skipping feature: $feature (not enabled)" -ForegroundColor Gray
     }
 }
@@ -505,8 +511,8 @@ foreach ($feature in $DisabledFeatures) {
 #region
 $SafeServicesToDisable = @(
     # --- Legacy / Deprecated ---
-    "Browser"                 # Computer Browser (CIS required)
-    "RemoteRegistry"          # CIS explicitly requires Disabled
+    "Browser"
+    "RemoteRegistry"
 
     # --- Bluetooth (if no BT hardware) ---
     "AVCTP"
@@ -608,7 +614,8 @@ foreach ($app in $AppsToRemove) {
     if ($package) {
         Remove-AppxPackage -Package $package.PackageFullName -AllUsers
         Write-Host "> Removing app package: $app" -ForegroundColor Green
-    } else {
+    }
+    else {
         Write-Host "> Application $app not found, skipping." -ForegroundColor Gray
     }
 }
@@ -665,7 +672,7 @@ Set-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Services\LanmanWorkstation\Para
 Write-Host "> Disabling Insecure Guest Authentication for SMB." -ForegroundColor Green
 
 # Enable Windows Defender Firewall for all profiles
-Set-NetFirewallProfile -Profile Domain,Public,Private -Enabled True | Out-Null
+Set-NetFirewallProfile -Profile Domain, Public, Private -Enabled True | Out-Null
 Write-Host "> Enabling Windows Defender Firewall for all profiles." -ForegroundColor Green
 
 # Block LLMNR
@@ -688,17 +695,17 @@ Write-Host "> Disabling LM Hash storage." -ForegroundColor Green
 
 #
 # --- OSConfig ---
-#region
-#get os is not server in name skip this
+#regionr'
 $os = (Get-CimInstance -ClassName Win32_OperatingSystem).Caption
-if ($os -notlike "*Server*"){
+if ($os -notlike "*Server*") {
     Write-Host @"
 This is a not a server edition of Windows.
 Skipping OSConfig hardening.
 
 To apply similar hardening please use Microsoft.SecurityComplianceToolkit.
 "@ -ForegroundColor Yellow
-} else {
+}
+else {
     Write-Host "> Installing Microsoft.OSConfig module." -ForegroundColor Green
     Install-Module -Name Microsoft.OSConfig -Scope AllUsers -Repository PSGallery -Force
 

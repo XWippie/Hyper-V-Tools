@@ -8,7 +8,10 @@
     - Sets LocalAccountTokenFilterPolicy=1
     - Ensures WMI service is set to Automatic and started
 #>
-$scannerIP="x.x.x.x"
+
+Param(
+    [string]$scannerIP = $null
+)
 
 # Require elevation
 $admin = ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()
@@ -18,8 +21,6 @@ if (-not $admin) {
     Write-Error "Run this script from an elevated PowerShell session (Run as Administrator)."
     exit 1
 }
-
-
 
 $ErrorActionPreference = 'SilentlyContinue'
 
@@ -37,27 +38,28 @@ New-ItemProperty -Path $oleKey -Name 'LegacyAuthenticationLevel' -Value 2 -Prope
 New-ItemProperty -Path $oleKey -Name 'LegacyImpersonationLevel' -Value 3 -PropertyType DWord -Force | Out-Null
 
 # --- Remove specific DCOM default permission values (if present) ---
-foreach ($name in 'DefaultLaunchPermission','MachineAccessRestriction','MachineLaunchRestriction') {
-    if (Get-ItemProperty -Path $oleKey -Name $name -ErrorAction SilentlyContinue) {
-        Remove-ItemProperty -Path $oleKey -Name $name -ErrorAction SilentlyContinue
-    }
-}
+foreach ($name in 'DefaultLaunchPermission','MachineAccessRestriction','MachineLaunchRestriction') { if (Get-ItemProperty -Path $oleKey -Name $name -ErrorAction SilentlyContinue) {Remove-ItemProperty -Path $oleKey -Name $name -ErrorAction SilentlyContinue } }
 
 # --- Firewall settings ---
 # Prefer PowerShell NetSecurity module. Fallback to netsh advfirewall if needed.
 
 # Allow DCOM/RPC endpoint mapper (TCP 135)
 New-NetFirewallRule -DisplayName 'DCOM_TCP135' -Direction Inbound -Action Allow -Protocol TCP -LocalPort 135 | Out-Null
-Set-NetFirewallRule -DisplayName 'DCOM_TCP135' -RemoteAddress $scannerIP | Out-Null
+
 
 Enable-NetFirewallRule -DisplayGroup 'Windows Management Instrumentation (WMI)' -ErrorAction SilentlyContinue
-Set-NetFirewallRule -DisplayGroup 'Windows Management Instrumentation (WMI)' -RemoteAddress $scannerIP | Out-Null
 
 Enable-NetFirewallRule -DisplayGroup 'Remote Service Management' -ErrorAction SilentlyContinue
-Set-NetFirewallRule -DisplayGroup 'Remote Service Management' -RemoteAddress $scannerIP | Out-Null
 
 Enable-NetFirewallRule -DisplayGroup 'Remote Administration' -ErrorAction SilentlyContinue
-Set-NetFirewallRule -DisplayGroup 'Remote Administration' -RemoteAddress $scannerIP | Out-Null
+
+if ($scannerIP -ne $null) {
+    Set-NetFirewallRule -DisplayName 'DCOM_TCP135' -RemoteAddress $scannerIP | Out-Null
+    Set-NetFirewallRule -DisplayGroup 'Windows Management Instrumentation (WMI)' -RemoteAddress $scannerIP | Out-Null
+    Set-NetFirewallRule -DisplayGroup 'Remote Service Management' -RemoteAddress $scannerIP | Out-Null
+    Set-NetFirewallRule -DisplayGroup 'Remote Administration' -RemoteAddress $scannerIP | Out-Null
+}
+
 
 # --- Disable Simple File Sharing (ForceGuest=0) ---
 $lsaKey = 'HKLM:\SYSTEM\CurrentControlSet\Control\Lsa'

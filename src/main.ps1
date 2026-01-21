@@ -16,69 +16,98 @@
 
 $version = "v1.0.0"
 
+Clear-Host
 
 # Banner
 $banner = @"
-==========================================
+======================================================
        Hyper-V Management Tool
-==========================================
+======================================================
 
 Version : $version
 Author  : Xander Waeghe
 GitHub  : https://github.com/XWippie/HyperV-Tools
 Date    : 18/09/2025
 
-==========================================
+======================================================
+"@
+
+$goodbye = @"
+======================================================
+   Thank you for using Hyper-V Tools!
+   Hope to see you again soon!
+   Goodbye!
+
+   Don't forget to check out the GitHub page:
+   https://github.com/XWippie
+======================================================
 "@
 
 Write-Host $banner -ForegroundColor Cyan
 
-
-
 # Define the menu options
 $menuOptions = @(
     "1 > View Information"
-    "2 > Network Settings"
-    "3 > Virtual Machines"
-    "4 > Cluster Management"
-    "5 > Advanced Settings (clone, export, import VMs)"
-    "6 > Exit"
+    "2 > Config"
+    "3 > Exit"
 )
 # Start the menu and capture the selected option
 $selectedOption = Start-Menu -Options $menuOptions -Title "Please what you want to do:"
+
+Start-Sleep -Milliseconds 100
 
 Clear-MenuRegion -Top $selectedOption.MenuTop -Height $selectedOption.MenuHeight
 
 # Move cursor under welcome bar
 [Console]::SetCursorPosition(0, $selectedOption.MenuTop)
 
-Write-Host "You selected: $($selectedOption.Option)" -ForegroundColor Green
 
 # Handle the selected option
 switch ($selectedOption.Option) {
     "1 > View Information" {
-        Write-Host "You chose to view information." -ForegroundColor Green
+        Write-Host "Sorry, vieuwing information is not yet implemented." -ForegroundColor Yellow
+        Write-Host "Returning to main menu..." -ForegroundColor Green
+        Start-Sleep -Seconds 1.5
+        & "$PSScriptRoot\main.ps1"
     }
-    "2 > Network Settings" {
-        Write-Host "You chose to manage network settings." -ForegroundColor Green
+    "2 > Config" {
+        $menuOptions = @(
+            "1 > Set basic configuration"
+            "2 > Back to main menu"
+            "3 > Exit"
+        )
+
+        $selectedOption = Start-Menu -Options $menuOptions -Title "Configuration Menu:"
+        Clear-MenuRegion -Top $selectedOption.MenuTop -Height $selectedOption.MenuHeight
+        [Console]::SetCursorPosition(0, $selectedOption.MenuTop)
+        Write-Host "You selected: $($selectedOption.Option)" -ForegroundColor Green
+        switch ($selectedOption.Option) {
+            "1 > Set basic configuration" {
+                Write-Host "Starting basic configuration..." -ForegroundColor Green
+                Start-Sleep -Milliseconds 500
+                & "$PSScriptRoot\modules\Set-BasicConfig.ps1"
+            }
+            "2 > Back to main menu" {
+                Write-Host "Returning to main menu..." -ForegroundColor Green
+                Start-Sleep -Milliseconds 500
+                & "$PSScriptRoot\main.ps1"
+            }
+            "3 > Exit" {
+                Clear-Host
+                Write-Host $goodbye -ForegroundColor Yellow
+                exit
+            }
+        }
     }
-    "3 > Virtual Machines" {
-        Write-Host "You chose to manage virtual machines." -ForegroundColor Green
-    }
-    "4 > Cluster Management" {
-        Write-Host "You chose to manage clusters." -ForegroundColor Green
-    }
-    "5 > Advanced Settings (clone, export, import VMs)" {
-        Write-Host "You chose advanced settings." -ForegroundColor Green
-    }
-    "6 > Exit" {
-        Write-Host "Thank you for using the Powershell Hyper-V Management Tool." -ForegroundColor Yellow
-        Write-Host "Hope to see you again soon!" -ForegroundColor Yellow
-        Write-Host "Goodbye!" -ForegroundColor Yellow
-        Start-Sleep -Seconds 1
+    "3 > Exit" {
+        Clear-Host
+        Write-Host $goodbye -ForegroundColor Yellow
         exit
     }
-    Default {
-        Write-Host "Invalid selection." -ForegroundColor Red
-    }
 }
+
+# animation for momvemtn of 67
+# emaplde
+# 1 -_<. .>__
+# 2 __<. .>_-
+# 1 and 2 alternated with sleep of 100ms for 2 seconds
