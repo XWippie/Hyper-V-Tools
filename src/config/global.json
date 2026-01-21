@@ -1,8 +1,0 @@
-{
-  "TemplateVM": "",
-  "TemplateVMPath": "D:\\Hyper-V-Tools\\Exports",
-  "ImportPathOptions": [
-    "C:\\ClusterStorage\\SharedStorage\\Exports",
-    "D:\\Hyper-V-Tools\\VM"
-  ]
-}

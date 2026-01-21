@@ -21,24 +21,26 @@ $errorActionPreference = "SilentlyContinue"
 #
 # --- Backup Current Registry Settings ---
 #region
-$backupPathHKCU = "C:\RegistryBackup_HKCU_$(Get-Date -Format 'yyyyMMdd_HHmmss').reg"
-reg export "HKCU" "$backupPathHKCU" /y | Out-Null
-$backupPathHKLM = "C:\RegistryBackup_HKLM_$(Get-Date -Format 'yyyyMMdd_HHmmss').reg"
-reg export "HKLM" "$backupPathHKLM" /y | Out-Null
-Write-Host "> Backed up Registry to C:\RegistryBackup_...reg" -ForegroundColor Green
+try {
+    Write-Host "> Backing up current Registry settings..." -ForegroundColor DarkGray
+    $backupPathHKCU = "C:\RegistryBackup_HKCU_$(Get-Date -Format 'yyyyMMdd_HHmmss').reg"
+    reg export "HKCU" "$backupPathHKCU" /y | Out-Null
+    $backupPathHKLM = "C:\RegistryBackup_HKLM_$(Get-Date -Format 'yyyyMMdd_HHmmss').reg"
+    reg export "HKLM" "$backupPathHKLM" /y | Out-Null
+    Write-Host "> Backed up Registry to C:\RegistryBackup_...reg" -ForegroundColor Green
+}
+catch {
+    Write-Host "> Could not create backup directory C:\RegistryBackup." -ForegroundColor Red
+    Start-Sleep -Seconds 2
+    & "$PSScriptRoot\..\main.ps1"
+}
+
 #endregion
 
 #
 # --- Getting System Information ---
 #region
 $osVersion = (Get-CimInstance -ClassName Win32_OperatingSystem).Caption
-$computerName = $env:COMPUTERNAME
-
-Write-Host @"
-System Information:
-    Operating System : $osVersion
-    Computer Name    : $computerName
-"@ -ForegroundColor Cyan
 #endregion
 
 
@@ -46,6 +48,7 @@ System Information:
 # --- Quality Of Life Changes ---
 #region
 # Creating all needed paths
+Write-Host "> Creating necessary registry paths..." -ForegroundColor DarkGray
 New-Item -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer" | Out-Null
 New-Item -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" | Out-Null
 New-Item -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\CabinetState" | Out-Null
@@ -60,7 +63,9 @@ New-Item -Path "HKCU:\Control Panel\Accessibility\StickyKeys" | Out-Null
 New-Item -Path "HKCU:\Control Panel\Accessibility\ToggleKeys" | Out-Null
 New-Item -Path "HKCU:\Control Panel\Accessibility\FilterKeys" | Out-Null
 New-Item -Path "HKCU:\Control Panel\Desktop" | Out-Null
+Write-Host "> Necessary registry paths created." -ForegroundColor Green
 
+Write-Host "> Applying Quality of Life registry settings..." -ForegroundColor DarkGray
 
 # Show File Extensions, Hidden Files, Full Path in Title Bar
 Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" -Name "HideFileExt" -Value 0 -Force | Out-Null
@@ -143,6 +148,8 @@ Write-Host "> Disabling Search suggestions in File Explorer." -ForegroundColor G
 
 
 if ($osVersion -like "*Server*") {
+    Write-Host "> Detected Windows Server OS. Applying server-specific QoL settings..." -ForegroundColor DarkGray
+
     # Disable Taskbar Widgets
     Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" -Name "TaskbarDa" -Value 0 -Force | Out-Null
     Write-Host "> Disabling Taskbar Widgets." -ForegroundColor Green
@@ -189,14 +196,17 @@ Start-Sleep -Seconds 2
 #
 # --- System Configuration ---
 #region
+Write-Host "> Applying System configuration settings..." -ForegroundColor DarkGray
+
 # Disable IE Enhanced Security Configuration
-# if os os server
 if ($osVersion -like "*Server*") {
+    Write-Host "> Detected Windows Server OS. Applying server-specific system settings..." -ForegroundColor DarkGray
+
     New-Item -Path "HKLM:\SOFTWARE\Microsoft\Active Setup\Installed Components\{A509B1A7-37EF-4b3f-8CFC-4F3A74704073}" -ErrorAction SilentlyContinue | Out-Null
     New-Item -Path "HKLM:\SOFTWARE\Microsoft\Active Setup\Installed Components\{A509B1A8-37EF-4b3f-8CFC-4F3A74704073}" -ErrorAction SilentlyContinue | Out-Null
     Set-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Active Setup\Installed Components\{A509B1A7-37EF-4b3f-8CFC-4F3A74704073}" -Name "IsInstalled" -Value 0 -Type DWord -Force | Out-Null
     Set-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Active Setup\Installed Components\{A509B1A8-37EF-4b3f-8CFC-4F3A74704073}" -Name "IsInstalled" -Value 0 -Type DWord -Force | Out-Null
-    Write-Host "> Disabling IE Enha nced Security Configuration." -ForegroundColor Green
+    Write-Host "> Disabling IE Enhanced Security Configuration." -ForegroundColor Green
 }
 
 # Timezone Setting
@@ -213,6 +223,7 @@ powercfg -change -hibernate-timeout-ac 0
 powercfg -change -hibernate-timeout-dc 0
 powercfg -change -standby-timeout-ac 0
 powercfg -change -standby-timeout-dc 0
+Write-Host "> Enabling High Performance Power Plan and disabling sleep/hibernate." -ForegroundColor Green
 
 # Disk Timeout
 Set-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Services\Disk" -Name "TimeOutValue" -Value 190 | Out-Null
@@ -244,6 +255,8 @@ Write-Host "> Disabling IPv6 on all network adapters." -ForegroundColor Green
 #
 # --- Remote Desktop Settings ---
 #region
+Write-Host "> Applying Remote Desktop settings..." -ForegroundColor DarkGray
+
 # Enable RDP
 Set-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Control\Terminal Server" -Name "fDenyTSConnections" -Value 0
 Write-Host "> Enabling Remote Desktop." -ForegroundColor Green
@@ -272,6 +285,8 @@ Write-Host "> Enabling Network Level Authentication for RDP." -ForegroundColor G
 
 #
 # --- Disable Unnecessary Features & Services ---
+Write-Host "> Disabling Unnecessary Features and Services..." -ForegroundColor DarkGray
+
 #region
 $DisabledFeatures = @(
     # Core / legacy / networking
@@ -456,6 +471,8 @@ foreach ($feature in $DisabledFeatures) {
 
 #
 # --- Disable Unnecessary Services ---
+Write-Host "> Disabling Unnecessary Services..." -ForegroundColor DarkGray
+
 #region
 $SafeServicesToDisable = @(
     # --- Legacy / Deprecated ---
@@ -533,6 +550,7 @@ foreach ($svc in $ServicesToDisable) {
 
 #
 # --- Remove Unnecessary Apps ---
+Write-Host "> Removing Unnecessary App Packages..." -ForegroundColor DarkGray
 #region
 $AppsToRemove = @(
     "Microsoft.Xbox.TCUI"
@@ -583,7 +601,9 @@ foreach ($app in $AppsToRemove) {
 #endregion
 
 #
-# --- Deleteing Schedules Tasks ---
+# --- Deleting Scheduled Tasks ---
+Write-Host "> Deleting Unnecessary Scheduled Tasks..." -ForegroundColor DarkGray
+
 #region
 $tasksToDelete = @(
     "\Google"
@@ -607,6 +627,8 @@ foreach ($task in $tasksToDelete) {
 
 #
 # --- Security Hardening ---
+Write-Host "> Applying Security Hardening settings..." -ForegroundColor DarkGray
+
 #region
 New-Item -Path 'HKLM:\SOFTWARE\Microsoft\Ole\AppCompat' -ErrorAction SilentlyContinue | Out-Null
 New-Item -Path 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Schedule\Maintenance' -ErrorAction SilentlyContinue | Out-Null
@@ -656,24 +678,7 @@ Write-Host "> Disabling LM Hash storage." -ForegroundColor Green
 
 Write-Host @"
 ======================================================
-|          Remote Desktop User Configuration         |
-======================================================
-It is possible that RDP is not possibe after applying all settings.
-If so, under Local GPO navigate to:
-Computer Configuration -> Windows Settings -> Security Settings -> Local Policies -> User Rights Assignment
-Change:
-- Allow log on through Remote Desktop Services
-- Deny log on through Remote Desktop Services
-- Deny access to this computer from the network
-To include/exclude the needed users or groups.
-
-If you are not in a trusted network, please change the firewall rdp rules to only allow connections from trusted IPs & through public network profiles.
-"@ -ForegroundColor Yellow
-
-Write-Host @"
-======================================================
-|              Configuration Complete!               |
-|    Please restart the server to apply changes.     |
+|    System Optimization and Hardening Complete!    |
 ======================================================
 "@ -ForegroundColor Green
 
